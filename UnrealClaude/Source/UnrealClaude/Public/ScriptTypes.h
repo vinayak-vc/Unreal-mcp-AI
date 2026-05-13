@@ -12,8 +12,7 @@ enum class EScriptType : uint8
 {
 	Cpp,
 	Python,
-	Console,
-	EditorUtility
+	Console
 };
 
 /**
@@ -26,7 +25,6 @@ inline FString ScriptTypeToString(EScriptType Type)
 		case EScriptType::Cpp: return TEXT("cpp");
 		case EScriptType::Python: return TEXT("python");
 		case EScriptType::Console: return TEXT("console");
-		case EScriptType::EditorUtility: return TEXT("editor_utility");
 		default: return TEXT("unknown");
 	}
 }
@@ -39,7 +37,6 @@ inline EScriptType StringToScriptType(const FString& TypeStr)
 	if (TypeStr.Equals(TEXT("cpp"), ESearchCase::IgnoreCase)) return EScriptType::Cpp;
 	if (TypeStr.Equals(TEXT("python"), ESearchCase::IgnoreCase)) return EScriptType::Python;
 	if (TypeStr.Equals(TEXT("console"), ESearchCase::IgnoreCase)) return EScriptType::Console;
-	if (TypeStr.Equals(TEXT("editor_utility"), ESearchCase::IgnoreCase)) return EScriptType::EditorUtility;
 	return EScriptType::Console; // Default
 }
 
@@ -53,7 +50,6 @@ inline FString GetScriptExtension(EScriptType Type)
 		case EScriptType::Cpp: return TEXT(".cpp");
 		case EScriptType::Python: return TEXT(".py");
 		case EScriptType::Console: return TEXT(".txt");
-		case EScriptType::EditorUtility: return TEXT(".uasset");
 		default: return TEXT(".txt");
 	}
 }

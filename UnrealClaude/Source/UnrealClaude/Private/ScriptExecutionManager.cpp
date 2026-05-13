@@ -74,9 +74,6 @@ FScriptExecutionResult FScriptExecutionManager::ExecuteScript(
 		case EScriptType::Console:
 			Result = ExecuteConsole(ScriptContent, FinalDescription);
 			break;
-		case EScriptType::EditorUtility:
-			Result = ExecuteEditorUtility(ScriptContent, FinalDescription);
-			break;
 		default:
 			Result = FScriptExecutionResult::Error(TEXT("Unknown script type"));
 	}
@@ -470,16 +467,6 @@ FScriptExecutionResult FScriptExecutionManager::ExecuteConsole(
 	return FScriptExecutionResult::Success(
 		FString::Printf(TEXT("Executed %d console commands"), ExecutedCount),
 		AllOutput
-	);
-}
-
-FScriptExecutionResult FScriptExecutionManager::ExecuteEditorUtility(
-	const FString& ScriptContent,
-	const FString& Description)
-{
-	// Editor Utility execution would require creating a Blueprint asset on the fly; not yet implemented
-	return FScriptExecutionResult::Error(
-		TEXT("Editor Utility script execution not yet implemented. Use Python or Console commands instead.")
 	);
 }
 

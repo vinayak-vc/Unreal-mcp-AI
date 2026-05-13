@@ -7,7 +7,7 @@
 
 /**
  * Interface for script executors
- * Each script type (Cpp, Python, Console, EditorUtility) has its own executor
+ * Each script type (Cpp, Python, Console) has its own executor
  */
 class IScriptExecutor
 {

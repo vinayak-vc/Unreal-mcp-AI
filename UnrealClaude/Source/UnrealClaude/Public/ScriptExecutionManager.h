@@ -24,7 +24,7 @@ public:
 
 	/**
 	 * Execute a script with permission flow
-	 * @param Type - Script type (Cpp, Python, Console, EditorUtility)
+	 * @param Type - Script type (Cpp, Python, Console)
 	 * @param ScriptContent - The script code (MUST include header comment with @Description)
 	 * @param Description - Brief description (used if not in header)
 	 * @return Execution result
@@ -82,9 +82,6 @@ private:
 
 	/** Execute console command(s) */
 	FScriptExecutionResult ExecuteConsole(const FString& ScriptContent, const FString& Description);
-
-	/** Execute Editor Utility Blueprint */
-	FScriptExecutionResult ExecuteEditorUtility(const FString& ScriptContent, const FString& Description);
 
 	/**
 	 * Show permission dialog to user

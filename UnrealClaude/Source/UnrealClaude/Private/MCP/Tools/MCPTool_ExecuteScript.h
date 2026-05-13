@@ -8,7 +8,7 @@
 /**
  * MCP Tool for executing scripts with user permission
  *
- * Supports: C++, Python, Console commands, Editor Utility
+ * Supports: C++, Python, Console commands
  *
  * IMPORTANT: Scripts MUST include a header comment with @Description
  * This description is stored in history for context restoration.
@@ -49,8 +49,7 @@ public:
 			"Script types:\n"
 			"- 'cpp': C++ via Live Coding (auto-retries on compile failure)\n"
 			"- 'python': Python script (requires Python plugin)\n"
-			"- 'console': Console command batch\n"
-			"- 'editor_utility': Editor Utility Widget/Blueprint\n\n"
+			"- 'console': Console command batch\n\n"
 			"IMPORTANT: Include @Description in script header for history tracking:\n"
 			"/** @UnrealClaude Script\\n * @Description: What this script does */\n\n"
 			"Returns: Script execution result, output, and any errors."
@@ -59,7 +58,7 @@ public:
 			FMCPToolParameter(
 				TEXT("script_type"),
 				TEXT("string"),
-				TEXT("Type: 'cpp', 'python', 'console', or 'editor_utility'"),
+				TEXT("Type: 'cpp', 'python', or 'console'"),
 				true
 			),
 			FMCPToolParameter(

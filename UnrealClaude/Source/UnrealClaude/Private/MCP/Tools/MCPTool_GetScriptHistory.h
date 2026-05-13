@@ -21,7 +21,7 @@ public:
 			"Use this to understand what scripts have been run in this session. "
 			"Helpful for context restoration and debugging.\n\n"
 			"Returns for each script:\n"
-			"- Script type (cpp, python, console, editor_utility)\n"
+			"- Script type (cpp, python, console)\n"
 			"- Filename (for file-based scripts)\n"
 			"- Description (from @Description header)\n"
 			"- Execution timestamp\n"
