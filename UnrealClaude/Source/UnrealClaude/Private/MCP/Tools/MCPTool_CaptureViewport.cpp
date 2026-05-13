@@ -113,9 +113,9 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 	// Encode to base64
 	const FString Base64Image = FBase64::Encode(CompressedData.GetData(), CompressedData.Num());
 
-	// Build result JSON
+	// Sidecar metadata. image_base64 is no longer set here — BuildToolResultJson
+	// emits it as a backward-compat shim alongside the canonical `base64` field.
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	ResultData->SetStringField(TEXT("image_base64"), Base64Image);
 	ResultData->SetNumberField(TEXT("width"), TargetWidth);
 	ResultData->SetNumberField(TEXT("height"), TargetHeight);
 	ResultData->SetStringField(TEXT("format"), TEXT("jpeg"));
@@ -127,7 +127,9 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 	UE_LOG(LogUnrealClaude, Log, TEXT("Captured %s viewport: %dx%d -> %dx%d JPEG (%d bytes base64)"),
 		*ViewportType, ViewportSize.X, ViewportSize.Y, TargetWidth, TargetHeight, Base64Image.Len());
 
-	return FMCPToolResult::Success(
+	return FMCPToolResult::Image(
+		Base64Image,
+		TEXT("image/jpeg"),
 		FString::Printf(TEXT("Captured %s viewport: %dx%d JPEG"), *ViewportType, TargetWidth, TargetHeight),
 		ResultData
 	);
