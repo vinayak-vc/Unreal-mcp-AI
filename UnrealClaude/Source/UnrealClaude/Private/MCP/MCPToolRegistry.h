@@ -121,7 +121,44 @@ struct FMCPToolInfo
 };
 
 /**
- * Result from executing an MCP tool
+ * Tool result content type — mirrors the MCP 2025-06-18 content block taxonomy.
+ * Tools default to Text; capture-style tools opt into Image; Audio and
+ * StructuredContent are reserved for future use (enum values declared so
+ * we don't have to bump the API surface when the first consumer lands).
+ */
+enum class EMCPToolResultType : uint8
+{
+	/** Plain text payload (the default — Message + stringified Data). */
+	Text = 0,
+	/** Base64-encoded image. Bridge emits a native MCP image content block. */
+	Image,
+	/** Base64-encoded audio. Reserved — bridge falls back to text path until a consumer lands. */
+	Audio,
+	/** Top-level structured JSON payload. Reserved — bridge falls back to text path. */
+	StructuredContent
+};
+
+/** Stable lowercase serialization matching MCP spec content-block "type" values. */
+inline const TCHAR* MCPToolResultTypeToString(EMCPToolResultType InType)
+{
+	switch (InType)
+	{
+	case EMCPToolResultType::Image:             return TEXT("image");
+	case EMCPToolResultType::Audio:             return TEXT("audio");
+	case EMCPToolResultType::StructuredContent: return TEXT("structured");
+	case EMCPToolResultType::Text:              // fallthrough
+	default:                                    return TEXT("text");
+	}
+}
+
+/**
+ * Result from executing an MCP tool.
+ *
+ * Defaults to Text content (Message + stringified Data). Tools that produce
+ * non-text payloads should use the typed factories (FMCPToolResult::Image)
+ * instead of stuffing the payload into Data — that keeps the C++ side
+ * authoritative about the content type rather than requiring the bridge to
+ * string-match on toolName.
  */
 struct FMCPToolResult
 {
@@ -136,6 +173,15 @@ struct FMCPToolResult
 
 	/** Optional non-fatal warnings (e.g. unknown/deprecated parameter names) */
 	TArray<FString> Warnings;
+
+	/** Content type hint for the response formatter (default Text). */
+	EMCPToolResultType ContentType = EMCPToolResultType::Text;
+
+	/** MIME type for Image/Audio payloads (e.g. "image/jpeg"). Ignored for Text/StructuredContent. */
+	FString MimeType;
+
+	/** Base64-encoded binary payload for Image/Audio. Ignored for Text/StructuredContent. */
+	FString Base64Payload;
 
 	FMCPToolResult()
 		: bSuccess(false)
@@ -155,6 +201,30 @@ struct FMCPToolResult
 		FMCPToolResult Result;
 		Result.bSuccess = false;
 		Result.Message = InMessage;
+		return Result;
+	}
+
+	/**
+	 * Image content factory. The bridge will emit a native MCP image content
+	 * block ({type:"image", data:<base64>, mimeType:...}) plus a separate text
+	 * block carrying Message and the metadata Data object (without re-emitting
+	 * the base64 payload).
+	 *
+	 * @param InBase64    Base64-encoded image bytes (without data: URI prefix).
+	 * @param InMimeType  MIME type, e.g. "image/jpeg" or "image/png".
+	 * @param InMessage   Optional human-readable caption / status line.
+	 * @param InData      Optional metadata sidecar (width, height, viewport_type, etc.).
+	 */
+	static FMCPToolResult Image(const FString& InBase64, const FString& InMimeType,
+		const FString& InMessage = FString(), TSharedPtr<FJsonObject> InData = nullptr)
+	{
+		FMCPToolResult Result;
+		Result.bSuccess = true;
+		Result.Message = InMessage;
+		Result.Data = InData;
+		Result.ContentType = EMCPToolResultType::Image;
+		Result.MimeType = InMimeType;
+		Result.Base64Payload = InBase64;
 		return Result;
 	}
 };

@@ -2,6 +2,7 @@
 
 #include "UnrealClaudeMCPServer.h"
 #include "MCPToolRegistry.h"
+#include "MCPResponseFormatter.h"
 #include "UnrealClaudeModule.h"
 #include "UnrealClaudeConstants.h"
 #include "HttpServerModule.h"
@@ -247,25 +248,7 @@ bool FUnrealClaudeMCPServer::HandleExecuteTool(const FHttpServerRequest& Request
 
 	FMCPToolResult Result = ToolRegistry->ExecuteTool(ToolName, ParamsJson.ToSharedRef());
 
-	// Build response
-	TSharedPtr<FJsonObject> ResponseJson = MakeShared<FJsonObject>();
-	ResponseJson->SetBoolField(TEXT("success"), Result.bSuccess);
-	ResponseJson->SetStringField(TEXT("message"), Result.Message);
-
-	if (Result.Data.IsValid())
-	{
-		ResponseJson->SetObjectField(TEXT("data"), Result.Data);
-	}
-
-	if (Result.Warnings.Num() > 0)
-	{
-		TArray<TSharedPtr<FJsonValue>> WarningsJson;
-		for (const FString& Warning : Result.Warnings)
-		{
-			WarningsJson.Add(MakeShared<FJsonValueString>(Warning));
-		}
-		ResponseJson->SetArrayField(TEXT("warnings"), WarningsJson);
-	}
+	TSharedPtr<FJsonObject> ResponseJson = UnrealClaude::MCP::BuildToolResultJson(Result);
 
 	FString JsonString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
@@ -326,9 +309,7 @@ TUniquePtr<FHttpServerResponse> FUnrealClaudeMCPServer::CreateJsonResponse(const
 
 TUniquePtr<FHttpServerResponse> FUnrealClaudeMCPServer::CreateErrorResponse(const FString& Message, EHttpServerResponseCodes Code)
 {
-	TSharedPtr<FJsonObject> ErrorJson = MakeShared<FJsonObject>();
-	ErrorJson->SetBoolField(TEXT("success"), false);
-	ErrorJson->SetStringField(TEXT("error"), Message);
+	TSharedPtr<FJsonObject> ErrorJson = UnrealClaude::MCP::BuildErrorEnvelopeJson(Message);
 
 	FString JsonString;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
