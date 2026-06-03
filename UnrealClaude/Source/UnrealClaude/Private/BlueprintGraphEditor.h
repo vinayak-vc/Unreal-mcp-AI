@@ -17,11 +17,15 @@
  * - Node ID system for tracking
  *
  * Supported Node Types:
- * - Flow: Branch, Sequence
- * - Functions: CallFunction, PrintString
+ * - Flow: Branch, Sequence, Cast, ForEach, ForEachWithBreak, DoOnce, Gate, Select
+ * - Functions: CallFunction, PrintString, Delay
  * - Variables: VariableGet, VariableSet
- * - Events: Event (BeginPlay, Tick, EndPlay)
+ * - Events: Event (BeginPlay, Tick, EndPlay), CustomEvent
  * - Math: Add, Subtract, Multiply, Divide
+ * - Struct: MakeStruct, BreakStruct
+ * - Array: MakeArray
+ * - Switch: SwitchInt, SwitchString, SwitchEnum
+ * - Timeline: Timeline
  *
  * Node ID System:
  * - Auto-generated descriptive IDs stored in NodeComment
@@ -222,6 +226,20 @@ private:
 	static UEdGraphNode* CreateSequenceNode(UEdGraph* Graph, int32 NumOutputs, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateMathNode(UEdGraph* Graph, const FString& MathOp, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateEnhancedInputActionNode(UEdGraph* Graph, const FString& ActionPath, int32 PosX, int32 PosY, FString& OutError);
+
+	// Sprint 2: new node types
+	static UEdGraphNode* CreateCastNode(UEdGraph* Graph, const FString& TargetClass, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateMacroNode(UEdGraph* Graph, const FString& MacroName, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateSwitchNode(UEdGraph* Graph, const FString& SwitchOn, const FString& EnumClass, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateMakeStructNode(UEdGraph* Graph, const FString& StructType, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateBreakStructNode(UEdGraph* Graph, const FString& StructType, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateMakeArrayNode(UEdGraph* Graph, const FString& ElementType, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateCustomEventNode(UEdGraph* Graph, const FString& EventName, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateSelectNode(UEdGraph* Graph, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateTimelineNode(UEdGraph* Graph, UBlueprint* Blueprint, const FString& TimelineName, int32 PosX, int32 PosY, FString& OutError);
+
+	/** Resolve a UScriptStruct by short name (FVector, FRotator, etc.) */
+	static UScriptStruct* FindStructByShortName(const FString& StructName);
 
 	/** Search for a UClass by short name across common engine script packages */
 	static UClass* FindClassByShortName(const FString& ClassName);

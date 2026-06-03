@@ -15,6 +15,18 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "HAL/PlatformAtomics.h"
 #include "K2Node_EnhancedInputAction.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_SwitchInteger.h"
+#include "K2Node_SwitchString.h"
+#include "K2Node_SwitchEnum.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Select.h"
+#include "K2Node_Timeline.h"
+#include "Engine/TimelineTemplate.h"
 #include "InputAction.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
@@ -175,9 +187,114 @@ UEdGraphNode* FBlueprintGraphEditor::CreateNode(
 		Context = ActionPath;
 		NewNode = CreateEnhancedInputActionNode(Graph, ActionPath, PosX, PosY, OutError);
 	}
+	// ---- Sprint 2 node types ----
+	else if (NodeType.Equals(TEXT("Cast"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("DynamicCast"), ESearchCase::IgnoreCase))
+	{
+		FString TargetClass = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("class")) : TEXT("");
+		if (TargetClass.IsEmpty() && NodeParams.IsValid())
+			TargetClass = NodeParams->GetStringField(TEXT("target_class"));
+		Context = TargetClass;
+		NewNode = CreateCastNode(Graph, TargetClass, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("ForEach"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("ForEachLoop"), ESearchCase::IgnoreCase))
+	{
+		Context = TEXT("ForEachLoop");
+		NewNode = CreateMacroNode(Graph, TEXT("ForEachLoop"), PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("ForEachWithBreak"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("ForEachLoopWithBreak"), ESearchCase::IgnoreCase))
+	{
+		Context = TEXT("ForEachLoopWithBreak");
+		NewNode = CreateMacroNode(Graph, TEXT("ForEachLoopWithBreak"), PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("DoOnce"), ESearchCase::IgnoreCase))
+	{
+		Context = TEXT("DoOnce");
+		NewNode = CreateMacroNode(Graph, TEXT("DoOnce"), PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Gate"), ESearchCase::IgnoreCase))
+	{
+		Context = TEXT("Gate");
+		NewNode = CreateMacroNode(Graph, TEXT("Gate"), PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Delay"), ESearchCase::IgnoreCase))
+	{
+		// Delay is a latent function on KismetSystemLibrary
+		Context = TEXT("Delay");
+		NewNode = CreateCallFunctionNode(Graph, TEXT("Delay"), TEXT("KismetSystemLibrary"), PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Switch"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("SwitchInt"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("SwitchInteger"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("SwitchString"), ESearchCase::IgnoreCase) ||
+	         NodeType.Equals(TEXT("SwitchEnum"), ESearchCase::IgnoreCase))
+	{
+		FString SwitchOn = NodeType; // default derives type from node_type name
+		FString EnumClass;
+		if (NodeParams.IsValid())
+		{
+			FString ExplicitOn = NodeParams->GetStringField(TEXT("on")); // "int", "string", "enum"
+			if (!ExplicitOn.IsEmpty()) SwitchOn = ExplicitOn;
+			EnumClass = NodeParams->GetStringField(TEXT("enum_class"));
+		}
+		Context = SwitchOn;
+		NewNode = CreateSwitchNode(Graph, SwitchOn, EnumClass, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("MakeStruct"), ESearchCase::IgnoreCase))
+	{
+		FString StructType = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("struct")) : TEXT("");
+		if (StructType.IsEmpty() && NodeParams.IsValid())
+			StructType = NodeParams->GetStringField(TEXT("struct_type"));
+		Context = StructType;
+		NewNode = CreateMakeStructNode(Graph, StructType, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
+	{
+		FString StructType = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("struct")) : TEXT("");
+		if (StructType.IsEmpty() && NodeParams.IsValid())
+			StructType = NodeParams->GetStringField(TEXT("struct_type"));
+		Context = StructType;
+		NewNode = CreateBreakStructNode(Graph, StructType, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("MakeArray"), ESearchCase::IgnoreCase))
+	{
+		FString ElementType = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("element_type")) : TEXT("float");
+		Context = ElementType;
+		NewNode = CreateMakeArrayNode(Graph, ElementType, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("CustomEvent"), ESearchCase::IgnoreCase))
+	{
+		FString EventName = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("event_name")) : TEXT("MyEvent");
+		if (EventName.IsEmpty() && NodeParams.IsValid())
+			EventName = NodeParams->GetStringField(TEXT("name"));
+		if (EventName.IsEmpty()) EventName = TEXT("MyEvent");
+		Context = EventName;
+		NewNode = CreateCustomEventNode(Graph, EventName, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Select"), ESearchCase::IgnoreCase))
+	{
+		NewNode = CreateSelectNode(Graph, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Timeline"), ESearchCase::IgnoreCase))
+	{
+		FString TimelineName = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("timeline_name")) : TEXT("MyTimeline");
+		if (TimelineName.IsEmpty() && NodeParams.IsValid())
+			TimelineName = NodeParams->GetStringField(TEXT("name"));
+		if (TimelineName.IsEmpty()) TimelineName = TEXT("MyTimeline");
+		Context = TimelineName;
+		NewNode = CreateTimelineNode(Graph, Blueprint, TimelineName, PosX, PosY, OutError);
+	}
 	else
 	{
-		OutError = FString::Printf(TEXT("Unknown node type: '%s'. Supported: CallFunction, Branch, Event, VariableGet, VariableSet, Sequence, Add, Subtract, Multiply, Divide, PrintString, EnhancedInputAction"), *NodeType);
+		OutError = FString::Printf(
+			TEXT("Unknown node type: '%s'. Supported: CallFunction, Branch, Event, VariableGet, VariableSet, Sequence, "
+			     "Add, Subtract, Multiply, Divide, PrintString, EnhancedInputAction, "
+			     "Cast, ForEach, ForEachWithBreak, DoOnce, Gate, Delay, "
+			     "Switch/SwitchInt/SwitchString/SwitchEnum, MakeStruct, BreakStruct, MakeArray, "
+			     "CustomEvent, Select, Timeline"),
+			*NodeType);
 		return nullptr;
 	}
 
@@ -1119,4 +1236,327 @@ UEdGraphNode* FBlueprintGraphEditor::CreateMathNode(
 	NodeCreator.Finalize();
 
 	return MathNode;
+}
+
+// ===== Sprint 2: New Node Types =====
+
+UScriptStruct* FBlueprintGraphEditor::FindStructByShortName(const FString& StructName)
+{
+	if (StructName == TEXT("FVector") || StructName == TEXT("Vector"))
+		return TBaseStructure<FVector>::Get();
+	if (StructName == TEXT("FRotator") || StructName == TEXT("Rotator"))
+		return TBaseStructure<FRotator>::Get();
+	if (StructName == TEXT("FTransform") || StructName == TEXT("Transform"))
+		return TBaseStructure<FTransform>::Get();
+	if (StructName == TEXT("FLinearColor") || StructName == TEXT("LinearColor"))
+		return TBaseStructure<FLinearColor>::Get();
+	if (StructName == TEXT("FColor") || StructName == TEXT("Color"))
+		return TBaseStructure<FColor>::Get();
+	if (StructName == TEXT("FVector2D") || StructName == TEXT("Vector2D"))
+		return TBaseStructure<FVector2D>::Get();
+	if (StructName == TEXT("FHitResult") || StructName == TEXT("HitResult"))
+		return TBaseStructure<FHitResult>::Get();
+
+	// Generic search — try common script packages
+	for (const FString& Prefix : TArray<FString>{
+		TEXT("/Script/CoreUObject."),
+		TEXT("/Script/Engine."),
+		TEXT("/Script/EnhancedInput.")})
+	{
+		UScriptStruct* Found = FindObject<UScriptStruct>(nullptr, *(Prefix + StructName));
+		if (Found) return Found;
+	}
+
+	return FindObject<UScriptStruct>(nullptr, *StructName);
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateCastNode(
+	UEdGraph* Graph,
+	const FString& TargetClass,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	if (TargetClass.IsEmpty())
+	{
+		OutError = TEXT("Cast node requires 'class' or 'target_class' param (e.g. \"PlayerController\")");
+		return nullptr;
+	}
+
+	UClass* Class = FindClassByShortName(TargetClass);
+	if (!Class)
+	{
+		OutError = FString::Printf(TEXT("Cast: class '%s' not found"), *TargetClass);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_DynamicCast> NodeCreator(*Graph);
+	UK2Node_DynamicCast* CastNode = NodeCreator.CreateNode();
+	CastNode->TargetType = Class;
+	CastNode->NodePosX = PosX;
+	CastNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return CastNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateMacroNode(
+	UEdGraph* Graph,
+	const FString& MacroName,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	// Standard macros are in the engine's StandardMacros blueprint
+	static const TCHAR* MacroLibPath = TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros");
+	UBlueprint* MacroLib = Cast<UBlueprint>(
+		StaticLoadObject(UBlueprint::StaticClass(), nullptr, MacroLibPath));
+
+	if (!MacroLib)
+	{
+		OutError = FString::Printf(
+			TEXT("Could not load StandardMacros library. Macro '%s' unavailable."), *MacroName);
+		return nullptr;
+	}
+
+	UEdGraph* MacroGraph = nullptr;
+	for (UEdGraph* G : MacroLib->MacroGraphs)
+	{
+		if (G && G->GetName().Equals(MacroName, ESearchCase::IgnoreCase))
+		{
+			MacroGraph = G;
+			break;
+		}
+	}
+
+	if (!MacroGraph)
+	{
+		// Build list of available macros for helpful error
+		TArray<FString> Available;
+		for (UEdGraph* G : MacroLib->MacroGraphs)
+		{
+			if (G) Available.Add(G->GetName());
+		}
+		OutError = FString::Printf(TEXT("Macro '%s' not found in StandardMacros. Available: %s"),
+			*MacroName, *FString::Join(Available, TEXT(", ")));
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_MacroInstance> NodeCreator(*Graph);
+	UK2Node_MacroInstance* MacroNode = NodeCreator.CreateNode();
+	MacroNode->SetMacroGraph(MacroGraph);
+	MacroNode->NodePosX = PosX;
+	MacroNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return MacroNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateSwitchNode(
+	UEdGraph* Graph,
+	const FString& SwitchOn,
+	const FString& EnumClass,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	const FString Lower = SwitchOn.ToLower();
+
+	if (Lower.Contains(TEXT("string")))
+	{
+		FGraphNodeCreator<UK2Node_SwitchString> NodeCreator(*Graph);
+		UK2Node_SwitchString* SwitchNode = NodeCreator.CreateNode();
+		SwitchNode->NodePosX = PosX;
+		SwitchNode->NodePosY = PosY;
+		NodeCreator.Finalize();
+		return SwitchNode;
+	}
+	else if (Lower.Contains(TEXT("enum")))
+	{
+		if (EnumClass.IsEmpty())
+		{
+			OutError = TEXT("SwitchEnum requires 'enum_class' param (e.g. \"EMyEnum\")");
+			return nullptr;
+		}
+		UEnum* Enum = FindObject<UEnum>(nullptr, *EnumClass);
+		if (!Enum)
+		{
+			// Try script paths
+			for (const FString& Prefix : TArray<FString>{TEXT("/Script/Engine."), TEXT("/Script/CoreUObject.")})
+			{
+				Enum = FindObject<UEnum>(nullptr, *(Prefix + EnumClass));
+				if (Enum) break;
+			}
+		}
+		if (!Enum)
+		{
+			OutError = FString::Printf(TEXT("SwitchEnum: enum '%s' not found"), *EnumClass);
+			return nullptr;
+		}
+
+		FGraphNodeCreator<UK2Node_SwitchEnum> NodeCreator(*Graph);
+		UK2Node_SwitchEnum* SwitchNode = NodeCreator.CreateNode();
+		SwitchNode->Enum = Enum;
+		SwitchNode->NodePosX = PosX;
+		SwitchNode->NodePosY = PosY;
+		NodeCreator.Finalize();
+		return SwitchNode;
+	}
+	else
+	{
+		// Default: switch on int
+		FGraphNodeCreator<UK2Node_SwitchInteger> NodeCreator(*Graph);
+		UK2Node_SwitchInteger* SwitchNode = NodeCreator.CreateNode();
+		SwitchNode->NodePosX = PosX;
+		SwitchNode->NodePosY = PosY;
+		NodeCreator.Finalize();
+		return SwitchNode;
+	}
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateMakeStructNode(
+	UEdGraph* Graph,
+	const FString& StructType,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	if (StructType.IsEmpty())
+	{
+		OutError = TEXT("MakeStruct requires 'struct' param (e.g. \"FVector\", \"FHitResult\")");
+		return nullptr;
+	}
+
+	UScriptStruct* Struct = FindStructByShortName(StructType);
+	if (!Struct)
+	{
+		OutError = FString::Printf(TEXT("MakeStruct: struct '%s' not found"), *StructType);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_MakeStruct> NodeCreator(*Graph);
+	UK2Node_MakeStruct* MakeNode = NodeCreator.CreateNode();
+	MakeNode->StructType = Struct;
+	MakeNode->NodePosX = PosX;
+	MakeNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return MakeNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateBreakStructNode(
+	UEdGraph* Graph,
+	const FString& StructType,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	if (StructType.IsEmpty())
+	{
+		OutError = TEXT("BreakStruct requires 'struct' param (e.g. \"FVector\", \"FHitResult\")");
+		return nullptr;
+	}
+
+	UScriptStruct* Struct = FindStructByShortName(StructType);
+	if (!Struct)
+	{
+		OutError = FString::Printf(TEXT("BreakStruct: struct '%s' not found"), *StructType);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_BreakStruct> NodeCreator(*Graph);
+	UK2Node_BreakStruct* BreakNode = NodeCreator.CreateNode();
+	BreakNode->StructType = Struct;
+	BreakNode->NodePosX = PosX;
+	BreakNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return BreakNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateMakeArrayNode(
+	UEdGraph* Graph,
+	const FString& ElementType,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	FGraphNodeCreator<UK2Node_MakeArray> NodeCreator(*Graph);
+	UK2Node_MakeArray* MakeArrNode = NodeCreator.CreateNode();
+	MakeArrNode->NodePosX = PosX;
+	MakeArrNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	// Pin type is inferred from first connection; no forced type needed at creation
+	return MakeArrNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateCustomEventNode(
+	UEdGraph* Graph,
+	const FString& EventName,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	FGraphNodeCreator<UK2Node_CustomEvent> NodeCreator(*Graph);
+	UK2Node_CustomEvent* EventNode = NodeCreator.CreateNode();
+	EventNode->CustomFunctionName = FName(*EventName);
+	EventNode->NodePosX = PosX;
+	EventNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return EventNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateSelectNode(
+	UEdGraph* Graph,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	FGraphNodeCreator<UK2Node_Select> NodeCreator(*Graph);
+	UK2Node_Select* SelectNode = NodeCreator.CreateNode();
+	SelectNode->NodePosX = PosX;
+	SelectNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return SelectNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateTimelineNode(
+	UEdGraph* Graph,
+	UBlueprint* Blueprint,
+	const FString& TimelineName,
+	int32 PosX, int32 PosY,
+	FString& OutError)
+{
+	if (!Blueprint)
+	{
+		OutError = TEXT("Timeline node requires a valid Blueprint");
+		return nullptr;
+	}
+
+	// Ensure unique name: if one with this name already exists, append counter
+	FName FinalName(*TimelineName);
+	{
+		int32 Suffix = 1;
+		auto TimelineExists = [&](const FName& N) -> bool {
+			for (UTimelineTemplate* T : Blueprint->Timelines)
+				if (T && T->GetVariableName() == N) return true;
+			return false;
+		};
+		while (TimelineExists(FinalName))
+		{
+			FinalName = FName(*FString::Printf(TEXT("%s_%d"), *TimelineName, Suffix++));
+		}
+	}
+
+	// Create backing UTimelineTemplate first, then create node referencing it
+	UTimelineTemplate* TimelineTemplate = FBlueprintEditorUtils::AddNewTimeline(Blueprint, FinalName);
+	if (!TimelineTemplate)
+	{
+		OutError = FString::Printf(TEXT("Failed to create timeline '%s'"), *TimelineName);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_Timeline> NodeCreator(*Graph);
+	UK2Node_Timeline* TimelineNode = NodeCreator.CreateNode();
+	TimelineNode->TimelineName = FinalName;
+	TimelineNode->NodePosX = PosX;
+	TimelineNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return TimelineNode;
 }
