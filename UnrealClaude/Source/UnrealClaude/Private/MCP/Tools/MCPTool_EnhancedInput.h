@@ -130,7 +130,9 @@ private:
 	FMCPToolResult ExecuteAddMapping(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteRemoveMapping(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddTrigger(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteRemoveTrigger(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddModifier(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteRemoveModifier(const TSharedRef<FJsonObject>& Params);
 
 	FMCPToolResult ExecuteQueryContext(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteQueryAction(const TSharedRef<FJsonObject>& Params);

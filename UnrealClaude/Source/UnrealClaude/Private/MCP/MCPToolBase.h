@@ -475,11 +475,26 @@ protected:
 	{
 		UClass* ActorClass = LoadClass<AActor>(nullptr, *ClassPath);
 
-		// For Blueprint paths, try with _C suffix if not already present
-		if (!ActorClass && ClassPath.StartsWith(TEXT("/Game/")) && !ClassPath.EndsWith(TEXT("_C")))
+		// Blueprint asset paths need dot-notation: /Game/Path/BP_Foo.BP_Foo_C
+		// LoadClass requires the object name after the dot, not just the package path.
+		if (!ActorClass && ClassPath.StartsWith(TEXT("/Game/")))
 		{
-			FString BlueprintClassPath = ClassPath + TEXT("_C");
-			ActorClass = LoadClass<AActor>(nullptr, *BlueprintClassPath);
+			const FString AssetName = FPaths::GetBaseFilename(ClassPath);
+			if (!ClassPath.Contains(TEXT(".")))
+			{
+				// Primary: /Game/Path/BP_Foo.BP_Foo_C
+				ActorClass = LoadClass<AActor>(nullptr, *(ClassPath + TEXT(".") + AssetName + TEXT("_C")));
+				// Fallback: /Game/Path/BP_Foo_C (some older assets)
+				if (!ActorClass)
+				{
+					ActorClass = LoadClass<AActor>(nullptr, *(ClassPath + TEXT("_C")));
+				}
+			}
+			else if (!ClassPath.EndsWith(TEXT("_C")))
+			{
+				// Has dot but missing _C: /Game/Path/BP_Foo.BP_Foo → /Game/Path/BP_Foo.BP_Foo_C
+				ActorClass = LoadClass<AActor>(nullptr, *(ClassPath + TEXT("_C")));
+			}
 		}
 
 		if (!ActorClass)

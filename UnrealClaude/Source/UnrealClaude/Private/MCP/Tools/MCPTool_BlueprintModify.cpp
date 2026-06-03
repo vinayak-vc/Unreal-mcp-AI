@@ -286,13 +286,80 @@ FMCPToolResult FMCPTool_BlueprintModify::ExecuteSetVariableDefault(const TShared
 		}
 	}
 
+	// Fallback: set via CDO reflection for inherited C++ UPROPERTY (EditDefaultsOnly) fields.
+	// These don't appear in Blueprint->NewVariables but exist on the GeneratedClass CDO.
+	bool bViaCDO = false;
 	if (!bFound)
 	{
-		// Build hint listing available variables
+		if (UClass* GenClass = Context.Blueprint->GeneratedClass)
+		{
+			if (UObject* CDO = GenClass->GetDefaultObject(/*bCreateIfNeeded=*/true))
+			{
+				if (FProperty* Prop = FindFProperty<FProperty>(GenClass, FName(*VariableName)))
+				{
+					if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Prop))
+					{
+						UObject* LoadedObj = nullptr;
+						if (!DefaultValue.IsEmpty() && !DefaultValue.Equals(TEXT("None"), ESearchCase::IgnoreCase))
+						{
+							FString Path = DefaultValue;
+							if (!Path.Contains(TEXT(".")))
+								Path = Path + TEXT(".") + FPaths::GetBaseFilename(Path);
+
+							if (CastField<FClassProperty>(Prop))
+							{
+								if (!Path.EndsWith(TEXT("_C"))) Path += TEXT("_C");
+								LoadedObj = LoadObject<UClass>(nullptr, *Path);
+								if (!LoadedObj) LoadedObj = LoadObject<UClass>(nullptr, *DefaultValue);
+							}
+							else
+							{
+								LoadedObj = LoadObject<UObject>(nullptr, *Path);
+								if (!LoadedObj) LoadedObj = LoadObject<UObject>(nullptr, *DefaultValue);
+							}
+
+							if (!LoadedObj)
+							{
+								return FMCPToolResult::Error(FString::Printf(
+									TEXT("CDO: could not load '%s' for property '%s'. Check asset path."),
+									*DefaultValue, *VariableName));
+							}
+						}
+						ObjProp->SetObjectPropertyValue_InContainer(CDO, LoadedObj);
+						CDO->MarkPackageDirty();
+						bFound = true;
+						bViaCDO = true;
+					}
+					else
+					{
+						void* Data = Prop->ContainerPtrToValuePtr<void>(CDO);
+						if (Prop->ImportText_Direct(*DefaultValue, Data, CDO, PPF_None))
+						{
+							CDO->MarkPackageDirty();
+							bFound = true;
+							bViaCDO = true;
+						}
+						else
+						{
+							return FMCPToolResult::Error(FString::Printf(
+								TEXT("CDO: failed to import '%s' into '%s' (type: %s)."),
+								*DefaultValue, *VariableName, *Prop->GetCPPType()));
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (!bFound)
+	{
 		TArray<FString> Available;
 		for (const FBPVariableDescription& Var : Context.Blueprint->NewVariables)
-		{
 			Available.Add(Var.VarName.ToString());
+		if (UClass* GenClass = Context.Blueprint->GeneratedClass)
+		{
+			for (TFieldIterator<FProperty> It(GenClass); It; ++It)
+				Available.AddUnique(FString::Printf(TEXT("%s (C++)"), *It->GetName()));
 		}
 		return FMCPToolResult::Error(FString::Printf(
 			TEXT("Variable '%s' not found. Available: %s"),
@@ -300,7 +367,8 @@ FMCPToolResult FMCPTool_BlueprintModify::ExecuteSetVariableDefault(const TShared
 			Available.Num() > 0 ? *FString::Join(Available, TEXT(", ")) : TEXT("(none)")));
 	}
 
-	if (auto CompileError = Context.CompileAndFinalize(TEXT("Variable default set")))
+	// CDO edits must NOT trigger Blueprint recompile — it resets CDO to compiled defaults
+	if (auto CompileError = !bViaCDO ? Context.CompileAndFinalize(TEXT("Variable default set")) : TOptional<FMCPToolResult>{})
 	{
 		return CompileError.GetValue();
 	}
