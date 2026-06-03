@@ -114,6 +114,7 @@ private:
 	FMCPToolResult ExecuteCreate(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddVariable(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteRemoveVariable(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteSetVariableDefault(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddFunction(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteRemoveFunction(const TSharedRef<FJsonObject>& Params);
 

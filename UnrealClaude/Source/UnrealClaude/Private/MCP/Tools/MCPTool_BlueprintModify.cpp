@@ -46,6 +46,10 @@ FMCPToolResult FMCPTool_BlueprintModify::Execute(const TSharedRef<FJsonObject>& 
 	{
 		return ExecuteRemoveVariable(Params);
 	}
+	if (Operation == TEXT("set_variable_default"))
+	{
+		return ExecuteSetVariableDefault(Params);
+	}
 	if (Operation == BlueprintModifyOps::AddFunction)
 	{
 		return ExecuteAddFunction(Params);
@@ -242,6 +246,68 @@ FMCPToolResult FMCPTool_BlueprintModify::ExecuteRemoveVariable(const TSharedRef<
 		FString::Printf(TEXT("Removed variable '%s' from Blueprint"), *VariableName),
 		ResultData
 	);
+}
+
+FMCPToolResult FMCPTool_BlueprintModify::ExecuteSetVariableDefault(const TSharedRef<FJsonObject>& Params)
+{
+	TOptional<FMCPToolResult> Error;
+	FString VariableName;
+	if (!ExtractRequiredString(Params, TEXT("variable_name"), VariableName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString DefaultValue;
+	if (!ExtractRequiredString(Params, TEXT("value"), DefaultValue, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FMCPBlueprintLoadContext Context;
+	if (auto LoadError = Context.LoadAndValidate(Params))
+	{
+		return LoadError.GetValue();
+	}
+
+	// Find the variable in Blueprint->NewVariables and update its DefaultValue string
+	FName VarName(*VariableName);
+	bool bFound = false;
+	for (FBPVariableDescription& Var : Context.Blueprint->NewVariables)
+	{
+		if (Var.VarName == VarName)
+		{
+			Var.DefaultValue = DefaultValue;
+			bFound = true;
+			break;
+		}
+	}
+
+	if (!bFound)
+	{
+		// Build hint listing available variables
+		TArray<FString> Available;
+		for (const FBPVariableDescription& Var : Context.Blueprint->NewVariables)
+		{
+			Available.Add(Var.VarName.ToString());
+		}
+		return FMCPToolResult::Error(FString::Printf(
+			TEXT("Variable '%s' not found. Available: %s"),
+			*VariableName,
+			Available.Num() > 0 ? *FString::Join(Available, TEXT(", ")) : TEXT("(none)")));
+	}
+
+	if (auto CompileError = Context.CompileAndFinalize(TEXT("Variable default set")))
+	{
+		return CompileError.GetValue();
+	}
+
+	TSharedPtr<FJsonObject> ResultData = Context.BuildResultJson();
+	ResultData->SetStringField(TEXT("variable_name"), VariableName);
+	ResultData->SetStringField(TEXT("default_value"), DefaultValue);
+
+	return FMCPToolResult::Success(
+		FString::Printf(TEXT("Set default value of '%s' to '%s'"), *VariableName, *DefaultValue),
+		ResultData);
 }
 
 FMCPToolResult FMCPTool_BlueprintModify::ExecuteAddFunction(const TSharedRef<FJsonObject>& Params)

@@ -779,7 +779,52 @@ UEdGraphNode* FBlueprintGraphEditor::CreateCallFunctionNode(
 
 	if (!Function)
 	{
-		OutError = FString::Printf(TEXT("Function '%s' not found. Tip: pass target_class to narrow search (e.g. \"Actor\", \"KismetSystemLibrary\")"), *FunctionName);
+		// Build fuzzy suggestions: substring-match FunctionName across all known classes
+		static const TArray<UClass*> AllSearchClasses = {
+			UKismetSystemLibrary::StaticClass(),
+			UKismetMathLibrary::StaticClass(),
+			UGameplayStatics::StaticClass(),
+			UEnhancedInputLocalPlayerSubsystem::StaticClass(),
+			AActor::StaticClass(),
+			APawn::StaticClass(),
+			AController::StaticClass(),
+			APlayerController::StaticClass(),
+			UActorComponent::StaticClass(),
+			USceneComponent::StaticClass(),
+		};
+
+		TArray<FString> Suggestions;
+		const FString LowerQuery = FunctionName.ToLower();
+		for (UClass* SearchClass : AllSearchClasses)
+		{
+			if (!SearchClass) continue;
+			for (TFieldIterator<UFunction> It(SearchClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
+			{
+				UFunction* Candidate = *It;
+				if (!Candidate || !(Candidate->FunctionFlags & FUNC_BlueprintCallable)) continue;
+				const FString CandidateName = Candidate->GetName();
+				if (CandidateName.ToLower().Contains(LowerQuery))
+				{
+					Suggestions.Add(FString::Printf(TEXT("%s (class: %s)"), *CandidateName, *SearchClass->GetName()));
+					if (Suggestions.Num() >= 5) break;
+				}
+			}
+			if (Suggestions.Num() >= 5) break;
+		}
+
+		if (Suggestions.Num() > 0)
+		{
+			OutError = FString::Printf(
+				TEXT("Function '%s' not found. Did you mean: %s"),
+				*FunctionName,
+				*FString::Join(Suggestions, TEXT(" | ")));
+		}
+		else
+		{
+			OutError = FString::Printf(
+				TEXT("Function '%s' not found. Tip: use blueprint_query 'find_function' op to search all registered UFUNCTIONs."),
+				*FunctionName);
+		}
 		return nullptr;
 	}
 

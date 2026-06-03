@@ -318,17 +318,61 @@ FMCPToolResult FMCPTool_EnhancedInput::ExecuteRemoveMapping(const TSharedRef<FJs
 		return Error.GetValue();
 	}
 
-	int32 MappingIndex = ExtractOptionalNumber<int32>(Params, TEXT("mapping_index"), -1);
-	if (MappingIndex < 0)
-	{
-		return FMCPToolResult::Error(TEXT("Missing or invalid mapping_index parameter"));
-	}
-
 	FString LoadError;
 	UInputMappingContext* Context = LoadMappingContext(ContextPath, LoadError);
 	if (!Context)
 	{
 		return FMCPToolResult::Error(LoadError);
+	}
+
+	int32 MappingIndex = ExtractOptionalNumber<int32>(Params, TEXT("mapping_index"), -1);
+
+	// Fallback: resolve by action_path + key when no index given
+	if (MappingIndex < 0)
+	{
+		FString ActionPath = ExtractOptionalString(Params, TEXT("action_path"));
+		FString KeyName    = ExtractOptionalString(Params, TEXT("key"));
+
+		if (!ActionPath.IsEmpty() && !KeyName.IsEmpty())
+		{
+			FString ActionError;
+			UInputAction* Action = LoadInputAction(ActionPath, ActionError);
+			if (Action)
+			{
+				FString KeyParseError;
+				FKey Key = ParseKey(KeyName, KeyParseError);
+				if (Key.IsValid())
+				{
+					const TArray<FEnhancedActionKeyMapping>& Mappings = Context->GetMappings();
+					for (int32 i = 0; i < Mappings.Num(); ++i)
+					{
+						if (Mappings[i].Action == Action && Mappings[i].Key == Key)
+						{
+							MappingIndex = i;
+							break;
+						}
+					}
+					if (MappingIndex < 0)
+					{
+						return FMCPToolResult::Error(FString::Printf(
+							TEXT("No mapping found for action '%s' with key '%s'. Use query_context to see available mappings."),
+							*FPaths::GetBaseFilename(ActionPath), *KeyName));
+					}
+				}
+				else
+				{
+					return FMCPToolResult::Error(KeyParseError);
+				}
+			}
+			else
+			{
+				return FMCPToolResult::Error(ActionError);
+			}
+		}
+		else
+		{
+			return FMCPToolResult::Error(TEXT("Missing or invalid mapping_index parameter. Alternatively pass 'action_path' + 'key' to remove by action and key name."));
+		}
 	}
 
 	TArray<FEnhancedActionKeyMapping>& Mappings = const_cast<TArray<FEnhancedActionKeyMapping>&>(Context->GetMappings());

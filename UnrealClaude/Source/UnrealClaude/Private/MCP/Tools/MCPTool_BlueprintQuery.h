@@ -37,7 +37,8 @@ public:
 			"- 'get_functions': Get all Blueprint functions (standalone, no inspect overhead)\n"
 			"- 'get_node_pins': Get detailed pin info for a specific node\n"
 			"- 'search_nodes': Search nodes by name/class substring\n"
-			"- 'find_references': Find references to a variable or function\n\n"
+			"- 'find_references': Find references to a variable or function\n"
+			"- 'find_function': Search registered UFUNCTIONs by name (use before CallFunction to get exact name+class)\n\n"
 			"Use 'list' first to discover Blueprints, then other ops for details.\n\n"
 			"Example paths:\n"
 			"- '/Game/Blueprints/BP_Character'\n"
@@ -82,6 +83,9 @@ public:
 	virtual FMCPToolResult Execute(const TSharedRef<FJsonObject>& Params) override;
 
 private:
+	/** Find UFUNCTIONs by name across all registered classes */
+	FMCPToolResult ExecuteFindFunction(const TSharedRef<FJsonObject>& Params);
+
 	/** List Blueprints matching filters */
 	FMCPToolResult ExecuteList(const TSharedRef<FJsonObject>& Params);
 

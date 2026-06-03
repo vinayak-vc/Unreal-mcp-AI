@@ -8,6 +8,16 @@
 #include "Engine/Blueprint.h"
 #include "K2Node_Variable.h"
 #include "K2Node_CallFunction.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "EnhancedInputSubsystems.h"
+#include "GameFramework/Actor.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
 
 FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& Params)
 {
@@ -55,6 +65,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& P
 	else if (Operation == TEXT("find_references"))
 	{
 		return ExecuteFindReferences(Params);
+	}
+	else if (Operation == TEXT("find_function"))
+	{
+		return ExecuteFindFunction(Params);
 	}
 
 	return FMCPToolResult::Error(FString::Printf(
@@ -428,4 +442,94 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteFindReferences(const TSharedRef<F
 
 	return FMCPToolResult::Success(
 		FString::Printf(TEXT("Found %d references to '%s' (showing %d)"), TotalMatches, *RefName, References.Num()), Result);
+}
+
+// --- find_function: search UFUNCTIONs by name across all known engine classes ---
+
+FMCPToolResult FMCPTool_BlueprintQuery::ExecuteFindFunction(const TSharedRef<FJsonObject>& Params)
+{
+	FString Query;
+	TOptional<FMCPToolResult> Error;
+	if (!ExtractRequiredString(Params, TEXT("query"), Query, Error))
+	{
+		return Error.GetValue();
+	}
+
+	const int32 Limit = FMath::Clamp(ExtractOptionalNumber<int32>(Params, TEXT("limit"), 20), 1, 100);
+	const bool bExactMatch = ExtractOptionalBool(Params, TEXT("exact"), false);
+	const FString LowerQuery = Query.ToLower();
+
+	// Search across all commonly-used engine classes
+	static const TArray<TPair<UClass*, FString>> SearchClasses = {
+		{ UKismetSystemLibrary::StaticClass(),           TEXT("KismetSystemLibrary") },
+		{ UKismetMathLibrary::StaticClass(),             TEXT("KismetMathLibrary") },
+		{ UGameplayStatics::StaticClass(),               TEXT("GameplayStatics") },
+		{ UEnhancedInputLocalPlayerSubsystem::StaticClass(), TEXT("EnhancedInputLocalPlayerSubsystem") },
+		{ AActor::StaticClass(),                         TEXT("Actor") },
+		{ APawn::StaticClass(),                          TEXT("Pawn") },
+		{ AController::StaticClass(),                    TEXT("Controller") },
+		{ APlayerController::StaticClass(),              TEXT("PlayerController") },
+		{ UActorComponent::StaticClass(),                TEXT("ActorComponent") },
+		{ USceneComponent::StaticClass(),                TEXT("SceneComponent") },
+	};
+
+	TArray<TSharedPtr<FJsonValue>> Matches;
+
+	for (const TPair<UClass*, FString>& ClassPair : SearchClasses)
+	{
+		UClass* SearchClass = ClassPair.Key;
+		if (!SearchClass) continue;
+
+		for (TFieldIterator<UFunction> It(SearchClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
+		{
+			UFunction* Func = *It;
+			if (!Func) continue;
+			if (!(Func->FunctionFlags & FUNC_BlueprintCallable)) continue;
+
+			const FString FuncName = Func->GetName();
+			const bool bMatches = bExactMatch
+				? FuncName.Equals(Query, ESearchCase::IgnoreCase)
+				: FuncName.ToLower().Contains(LowerQuery);
+
+			if (!bMatches) continue;
+
+			TSharedPtr<FJsonObject> FuncObj = MakeShared<FJsonObject>();
+			FuncObj->SetStringField(TEXT("function"), FuncName);
+			FuncObj->SetStringField(TEXT("class"), ClassPair.Value);
+			FuncObj->SetBoolField(TEXT("is_pure"), (Func->FunctionFlags & FUNC_BlueprintPure) != 0);
+			FuncObj->SetBoolField(TEXT("is_static"), (Func->FunctionFlags & FUNC_Static) != 0);
+
+			// Collect params
+			TArray<TSharedPtr<FJsonValue>> ParamsArr;
+			for (TFieldIterator<FProperty> PIt(Func); PIt && (PIt->PropertyFlags & CPF_Parm); ++PIt)
+			{
+				FProperty* Prop = *PIt;
+				if (!Prop || (Prop->PropertyFlags & CPF_ReturnParm)) continue;
+				TSharedPtr<FJsonObject> ParamObj = MakeShared<FJsonObject>();
+				ParamObj->SetStringField(TEXT("name"), Prop->GetName());
+				ParamObj->SetStringField(TEXT("type"), Prop->GetCPPType());
+				ParamObj->SetBoolField(TEXT("is_out"), (Prop->PropertyFlags & CPF_OutParm) != 0);
+				ParamsArr.Add(MakeShared<FJsonValueObject>(ParamObj));
+			}
+			FuncObj->SetArrayField(TEXT("params"), ParamsArr);
+
+			// Hint for CallFunction usage
+			FuncObj->SetStringField(TEXT("usage_hint"), FString::Printf(
+				TEXT("node_type: CallFunction, node_params: {function: \"%s\", target_class: \"%s\"}"),
+				*FuncName, *ClassPair.Value));
+
+			Matches.Add(MakeShared<FJsonValueObject>(FuncObj));
+			if (Matches.Num() >= Limit) break;
+		}
+		if (Matches.Num() >= Limit) break;
+	}
+
+	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetStringField(TEXT("query"), Query);
+	Result->SetArrayField(TEXT("functions"), Matches);
+	Result->SetNumberField(TEXT("count"), Matches.Num());
+	Result->SetBoolField(TEXT("exact_match"), bExactMatch);
+
+	return FMCPToolResult::Success(
+		FString::Printf(TEXT("Found %d function(s) matching '%s'"), Matches.Num(), *Query), Result);
 }

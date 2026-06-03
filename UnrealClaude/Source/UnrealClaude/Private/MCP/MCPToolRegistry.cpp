@@ -9,6 +9,7 @@
 #include "Tools/MCPTool_SpawnActor.h"
 #include "Tools/MCPTool_GetLevelActors.h"
 #include "Tools/MCPTool_SetProperty.h"
+#include "Tools/MCPTool_GetProperty.h"
 #include "Tools/MCPTool_RunConsoleCommand.h"
 #include "Tools/MCPTool_DeleteActors.h"
 #include "Tools/MCPTool_MoveActor.h"
@@ -70,6 +71,7 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 	RegisterTool(MakeShared<FMCPTool_SpawnActor>());
 	RegisterTool(MakeShared<FMCPTool_GetLevelActors>());
 	RegisterTool(MakeShared<FMCPTool_SetProperty>());
+	RegisterTool(MakeShared<FMCPTool_GetProperty>());
 	RegisterTool(MakeShared<FMCPTool_RunConsoleCommand>());
 	RegisterTool(MakeShared<FMCPTool_DeleteActors>());
 	RegisterTool(MakeShared<FMCPTool_MoveActor>());
