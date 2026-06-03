@@ -62,7 +62,10 @@ public class UnrealClaude : ModuleRules
 				"EditorScriptingUtilities",
 				// Enhanced Input
 				"EnhancedInput",
-				"InputBlueprintNodes"
+				"InputBlueprintNodes",
+				// Niagara particle system
+				"Niagara",
+				"NiagaraEditor"
 			}
 		);
 

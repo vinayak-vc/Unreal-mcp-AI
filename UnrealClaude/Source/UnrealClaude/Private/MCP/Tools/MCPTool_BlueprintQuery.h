@@ -86,6 +86,9 @@ private:
 	/** Find UFUNCTIONs by name across all registered classes */
 	FMCPToolResult ExecuteFindFunction(const TSharedRef<FJsonObject>& Params);
 
+	/** List all BlueprintCallable functions on a given class */
+	FMCPToolResult ExecuteGetClassFunctions(const TSharedRef<FJsonObject>& Params);
+
 	/** List Blueprints matching filters */
 	FMCPToolResult ExecuteList(const TSharedRef<FJsonObject>& Params);
 

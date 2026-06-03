@@ -10,6 +10,8 @@
 #include "Tools/MCPTool_GetLevelActors.h"
 #include "Tools/MCPTool_SetProperty.h"
 #include "Tools/MCPTool_GetProperty.h"
+#include "Tools/MCPTool_Niagara.h"
+#include "Tools/MCPTool_Level.h"
 #include "Tools/MCPTool_RunConsoleCommand.h"
 #include "Tools/MCPTool_DeleteActors.h"
 #include "Tools/MCPTool_MoveActor.h"
@@ -100,6 +102,8 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 	RegisterTool(MakeShared<FMCPTool_Asset>());
 
 	RegisterTool(MakeShared<FMCPTool_OpenLevel>());
+	RegisterTool(MakeShared<FMCPTool_Niagara>());
+	RegisterTool(MakeShared<FMCPTool_Level>());
 
 	// Task queue takes a raw pointer since the registry always outlives it
 	TaskQueue = MakeShared<FMCPTaskQueue>(this);

@@ -70,6 +70,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& P
 	{
 		return ExecuteFindFunction(Params);
 	}
+	else if (Operation == TEXT("get_class_functions"))
+	{
+		return ExecuteGetClassFunctions(Params);
+	}
 
 	return FMCPToolResult::Error(FString::Printf(
 		TEXT("Unknown operation: '%s'. Valid operations: 'list', 'inspect', 'get_graph', 'get_nodes', 'get_variables', 'get_functions', 'get_node_pins', 'search_nodes', 'find_references'"), *Operation));
@@ -532,4 +536,120 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteFindFunction(const TSharedRef<FJs
 
 	return FMCPToolResult::Success(
 		FString::Printf(TEXT("Found %d function(s) matching '%s'"), Matches.Num(), *Query), Result);
+}
+
+// --- get_class_functions: all BlueprintCallable UFUNCTIONs on a given class ---
+
+FMCPToolResult FMCPTool_BlueprintQuery::ExecuteGetClassFunctions(const TSharedRef<FJsonObject>& Params)
+{
+	FString ClassName;
+	TOptional<FMCPToolResult> Error;
+	if (!ExtractRequiredString(Params, TEXT("class"), ClassName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	const bool bIncludeInherited = ExtractOptionalBool(Params, TEXT("include_inherited"), true);
+	const bool bPureOnly         = ExtractOptionalBool(Params, TEXT("pure_only"), false);
+	const int32 Limit            = FMath::Clamp(ExtractOptionalNumber<int32>(Params, TEXT("limit"), 100), 1, 500);
+
+	// Resolve class — static map of known short names
+	static TMap<FString, UClass*> CommonClassMap;
+	static bool bClassMapInit = false;
+	if (!bClassMapInit)
+	{
+		bClassMapInit = true;
+		CommonClassMap.Add(TEXT("Actor"),                             AActor::StaticClass());
+		CommonClassMap.Add(TEXT("Pawn"),                             APawn::StaticClass());
+		CommonClassMap.Add(TEXT("Controller"),                       AController::StaticClass());
+		CommonClassMap.Add(TEXT("PlayerController"),                 APlayerController::StaticClass());
+		CommonClassMap.Add(TEXT("ActorComponent"),                   UActorComponent::StaticClass());
+		CommonClassMap.Add(TEXT("SceneComponent"),                   USceneComponent::StaticClass());
+		CommonClassMap.Add(TEXT("KismetSystemLibrary"),              UKismetSystemLibrary::StaticClass());
+		CommonClassMap.Add(TEXT("KismetMathLibrary"),                UKismetMathLibrary::StaticClass());
+		CommonClassMap.Add(TEXT("GameplayStatics"),                  UGameplayStatics::StaticClass());
+		CommonClassMap.Add(TEXT("EnhancedInputLocalPlayerSubsystem"),UEnhancedInputLocalPlayerSubsystem::StaticClass());
+	}
+
+	UClass* TargetClass = nullptr;
+	if (UClass** Found = CommonClassMap.Find(ClassName))
+	{
+		TargetClass = *Found;
+	}
+	if (!TargetClass)
+	{
+		// Generic lookup across script packages
+		for (const FString& Prefix : TArray<FString>{
+			TEXT("/Script/Engine."), TEXT("/Script/CoreUObject."),
+			TEXT("/Script/EnhancedInput."), TEXT("/Script/UMG.")})
+		{
+			TargetClass = FindObject<UClass>(nullptr, *(Prefix + ClassName));
+			if (TargetClass) break;
+		}
+	}
+	if (!TargetClass)
+	{
+		return FMCPToolResult::Error(FString::Printf(
+			TEXT("Class '%s' not found. Try: Actor, PlayerController, KismetSystemLibrary, GameplayStatics, KismetMathLibrary, EnhancedInputLocalPlayerSubsystem"),
+			*ClassName));
+	}
+
+	const EFieldIteratorFlags::SuperClassFlags SuperFlag = bIncludeInherited
+		? EFieldIteratorFlags::IncludeSuper
+		: EFieldIteratorFlags::ExcludeSuper;
+
+	TArray<TSharedPtr<FJsonValue>> FunctionsArray;
+
+	for (TFieldIterator<UFunction> It(TargetClass, SuperFlag); It; ++It)
+	{
+		UFunction* Func = *It;
+		if (!Func) continue;
+		if (!(Func->FunctionFlags & FUNC_BlueprintCallable)) continue;
+		const bool bIsPure = (Func->FunctionFlags & FUNC_BlueprintPure) != 0;
+		if (bPureOnly && !bIsPure) continue;
+
+		TSharedPtr<FJsonObject> FuncObj = MakeShared<FJsonObject>();
+		FuncObj->SetStringField(TEXT("function"), Func->GetName());
+		FuncObj->SetStringField(TEXT("defined_in"), Func->GetOuterUClass() ? Func->GetOuterUClass()->GetName() : TEXT("Unknown"));
+		FuncObj->SetBoolField(TEXT("is_pure"), bIsPure);
+		FuncObj->SetBoolField(TEXT("is_static"), (Func->FunctionFlags & FUNC_Static) != 0);
+
+		TArray<TSharedPtr<FJsonValue>> ParamsArr;
+		FString ReturnType;
+		for (TFieldIterator<FProperty> PIt(Func); PIt && (PIt->PropertyFlags & CPF_Parm); ++PIt)
+		{
+			FProperty* Prop = *PIt;
+			if (!Prop) continue;
+			if (Prop->PropertyFlags & CPF_ReturnParm)
+			{
+				ReturnType = Prop->GetCPPType();
+				continue;
+			}
+			TSharedPtr<FJsonObject> ParamObj = MakeShared<FJsonObject>();
+			ParamObj->SetStringField(TEXT("name"), Prop->GetName());
+			ParamObj->SetStringField(TEXT("type"), Prop->GetCPPType());
+			ParamObj->SetBoolField(TEXT("is_out"), (Prop->PropertyFlags & CPF_OutParm) != 0);
+			ParamsArr.Add(MakeShared<FJsonValueObject>(ParamObj));
+		}
+		FuncObj->SetArrayField(TEXT("params"), ParamsArr);
+		if (!ReturnType.IsEmpty())
+			FuncObj->SetStringField(TEXT("return_type"), ReturnType);
+
+		FuncObj->SetStringField(TEXT("callfunction_hint"), FString::Printf(
+			TEXT("{function: \"%s\", target_class: \"%s\"}"), *Func->GetName(), *ClassName));
+
+		FunctionsArray.Add(MakeShared<FJsonValueObject>(FuncObj));
+		if (FunctionsArray.Num() >= Limit) break;
+	}
+
+	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
+	Result->SetStringField(TEXT("class"), ClassName);
+	Result->SetStringField(TEXT("resolved_class"), TargetClass->GetName());
+	Result->SetBoolField(TEXT("include_inherited"), bIncludeInherited);
+	Result->SetArrayField(TEXT("functions"), FunctionsArray);
+	Result->SetNumberField(TEXT("count"), FunctionsArray.Num());
+
+	return FMCPToolResult::Success(
+		FString::Printf(TEXT("Found %d BlueprintCallable function(s) on '%s'"), FunctionsArray.Num(), *ClassName),
+		Result);
 }
