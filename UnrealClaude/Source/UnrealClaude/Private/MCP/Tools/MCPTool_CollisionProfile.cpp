@@ -183,9 +183,38 @@ FMCPToolResult FMCPTool_CollisionProfile::ExecuteSetResponse(const TSharedRef<FJ
 	TArray<FString> ChangedChannels;
 
 	auto ResolveChannel = [](const FString& ChannelName) -> ECollisionChannel {
-		FName ChName(*ChannelName);
-		int32 Index = UCollisionProfile::Get()->ReturnContainerIndexFromChannelName(ChName);
-		return static_cast<ECollisionChannel>(Index);
+		// Map common channel names to enum values
+		static const TMap<FString, ECollisionChannel> ChannelMap = {
+			{TEXT("WorldStatic"), ECC_WorldStatic},
+			{TEXT("WorldDynamic"), ECC_WorldDynamic},
+			{TEXT("Pawn"), ECC_Pawn},
+			{TEXT("Visibility"), ECC_Visibility},
+			{TEXT("Camera"), ECC_Camera},
+			{TEXT("PhysicsBody"), ECC_PhysicsBody},
+			{TEXT("Vehicle"), ECC_Vehicle},
+			{TEXT("Destructible"), ECC_Destructible},
+		};
+
+		const FString Lower = ChannelName.ToLower();
+		for (const auto& Pair : ChannelMap)
+		{
+			if (Pair.Key.Equals(ChannelName, ESearchCase::IgnoreCase))
+			{
+				return Pair.Value;
+			}
+		}
+
+		// Try GameTraceChannel1-18 by number
+		if (ChannelName.StartsWith(TEXT("GameTraceChannel")))
+		{
+			int32 Num = FCString::Atoi(*ChannelName.Mid(16));
+			if (Num >= 1 && Num <= 18)
+			{
+				return static_cast<ECollisionChannel>(ECC_GameTraceChannel1 + Num - 1);
+			}
+		}
+
+		return ECC_WorldStatic; // Fallback
 	};
 
 	// Single channel

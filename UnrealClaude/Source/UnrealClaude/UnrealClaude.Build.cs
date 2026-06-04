@@ -70,6 +70,8 @@ public class UnrealClaude : ModuleRules
 				"UMG",
 				// UMGEditor for WidgetBlueprint creation
 				"UMGEditor",
+				// EngineSettings for GameMapsSettings
+				"EngineSettings",
 				// Level Sequence / Sequencer tool
 				"LevelSequence",
 				"MovieScene",

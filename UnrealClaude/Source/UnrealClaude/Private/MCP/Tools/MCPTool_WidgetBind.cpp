@@ -26,6 +26,7 @@
 #include "Components/Spacer.h"
 #include "Components/Throbber.h"
 
+#include "Kismet2/KismetEditorUtilities.h"
 #include "EditorAssetLibrary.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"

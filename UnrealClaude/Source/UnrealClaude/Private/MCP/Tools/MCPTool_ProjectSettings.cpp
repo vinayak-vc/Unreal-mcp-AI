@@ -54,14 +54,10 @@ FMCPToolResult FMCPTool_ProjectSettings::ExecuteGetMapsSettings(const TSharedRef
 
 	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
 
-	const FSoftClassPath& GameModePath = MapSettings->GlobalDefaultGameMode;
-	ResultData->SetStringField(TEXT("default_game_mode"), GameModePath.ToString());
-
-	ResultData->SetStringField(TEXT("game_default_map"), MapSettings->GetGameDefaultMap().ToString());
-	ResultData->SetStringField(TEXT("server_default_map"), MapSettings->GetServerDefaultMap().ToString());
-
-	const FSoftClassPath& GameInstancePath = MapSettings->GameInstanceClass;
-	ResultData->SetStringField(TEXT("game_instance_class"), GameInstancePath.ToString());
+	ResultData->SetStringField(TEXT("default_game_mode"), UGameMapsSettings::GetGlobalDefaultGameMode());
+	ResultData->SetStringField(TEXT("game_default_map"), UGameMapsSettings::GetGameDefaultMap());
+	ResultData->SetStringField(TEXT("server_default_map"), UGameMapsSettings::GetGameDefaultMap(EDefaultMapRequestType::Server));
+	ResultData->SetStringField(TEXT("game_instance_class"), MapSettings->GameInstanceClass.ToString());
 
 	return FMCPToolResult::Success(TEXT("Retrieved maps/modes settings"), ResultData);
 }
@@ -79,29 +75,15 @@ FMCPToolResult FMCPTool_ProjectSettings::ExecuteSetMapsSettings(const TSharedRef
 	FString DefaultGameMode = ExtractOptionalString(Params, TEXT("default_game_mode"));
 	if (!DefaultGameMode.IsEmpty())
 	{
-		MapSettings->GlobalDefaultGameMode = FSoftClassPath(DefaultGameMode);
+		UGameMapsSettings::SetGlobalDefaultGameMode(DefaultGameMode);
 		ChangedFields.Add(FString::Printf(TEXT("default_game_mode=%s"), *DefaultGameMode));
 	}
 
 	FString GameDefaultMap = ExtractOptionalString(Params, TEXT("game_default_map"));
 	if (!GameDefaultMap.IsEmpty())
 	{
-		MapSettings->SetGameDefaultMap(GameDefaultMap);
+		UGameMapsSettings::SetGameDefaultMap(GameDefaultMap);
 		ChangedFields.Add(FString::Printf(TEXT("game_default_map=%s"), *GameDefaultMap));
-	}
-
-	FString ServerDefaultMap = ExtractOptionalString(Params, TEXT("server_default_map"));
-	if (!ServerDefaultMap.IsEmpty())
-	{
-		MapSettings->SetServerDefaultMap(ServerDefaultMap);
-		ChangedFields.Add(FString::Printf(TEXT("server_default_map=%s"), *ServerDefaultMap));
-	}
-
-	FString GameInstanceClass = ExtractOptionalString(Params, TEXT("game_instance_class"));
-	if (!GameInstanceClass.IsEmpty())
-	{
-		MapSettings->GameInstanceClass = FSoftClassPath(GameInstanceClass);
-		ChangedFields.Add(FString::Printf(TEXT("game_instance_class=%s"), *GameInstanceClass));
 	}
 
 	if (ChangedFields.Num() == 0)
@@ -155,10 +137,6 @@ FMCPToolResult FMCPTool_ProjectSettings::ExecuteGetInputSettings(const TSharedRe
 
 	ResultData->SetStringField(TEXT("default_touch_interface"),
 		InputSettings->DefaultTouchInterface.ToString());
-	ResultData->SetStringField(TEXT("default_input_component_class"),
-		InputSettings->DefaultInputComponentClass.ToString());
-	ResultData->SetStringField(TEXT("default_player_input_class"),
-		InputSettings->DefaultPlayerInputClass.ToString());
 	ResultData->SetBoolField(TEXT("use_mouse_for_touch"), InputSettings->bUseMouseForTouch);
 	ResultData->SetBoolField(TEXT("enable_mouse_smoothing"), InputSettings->bEnableMouseSmoothing);
 	ResultData->SetBoolField(TEXT("enable_fov_scaling"), InputSettings->bEnableFOVScaling);
@@ -198,19 +176,8 @@ FMCPToolResult FMCPTool_ProjectSettings::ExecuteSetInputSettings(const TSharedRe
 		ChangedFields.Add(TEXT("default_touch_interface"));
 	}
 
-	FString InputComponentClass = ExtractOptionalString(Params, TEXT("default_input_component_class"));
-	if (!InputComponentClass.IsEmpty())
-	{
-		InputSettings->DefaultInputComponentClass = FSoftClassPath(InputComponentClass);
-		ChangedFields.Add(TEXT("default_input_component_class"));
-	}
-
-	FString PlayerInputClass = ExtractOptionalString(Params, TEXT("default_player_input_class"));
-	if (!PlayerInputClass.IsEmpty())
-	{
-		InputSettings->DefaultPlayerInputClass = FSoftClassPath(PlayerInputClass);
-		ChangedFields.Add(TEXT("default_player_input_class"));
-	}
+	// DefaultInputComponentClass and DefaultPlayerInputClass are private in UE 5.5
+	// Use DefaultTouchInterface for now; other input settings require config file editing
 
 	if (ChangedFields.Num() == 0)
 	{
