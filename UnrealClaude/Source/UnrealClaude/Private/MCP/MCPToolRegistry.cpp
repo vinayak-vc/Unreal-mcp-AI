@@ -33,6 +33,20 @@
 #include "Tools/MCPTool_Asset.h"
 #include "Tools/MCPTool_OpenLevel.h"
 
+// New tools
+#include "Tools/MCPTool_WorldSettings.h"
+#include "Tools/MCPTool_ProjectSettings.h"
+#include "Tools/MCPTool_Build.h"
+#include "Tools/MCPTool_SetClassDefaults.h"
+#include "Tools/MCPTool_CreateCppClass.h"
+#include "Tools/MCPTool_ImportAsset.h"
+#include "Tools/MCPTool_WidgetBind.h"
+#include "Tools/MCPTool_ActorSearch.h"
+#include "Tools/MCPTool_DataTable.h"
+#include "Tools/MCPTool_Curve.h"
+#include "Tools/MCPTool_CollisionProfile.h"
+#include "Tools/MCPTool_Sequencer.h"
+
 #include "Tools/MCPTool_TaskSubmit.h"
 #include "Tools/MCPTool_TaskStatus.h"
 #include "Tools/MCPTool_TaskResult.h"
@@ -104,6 +118,20 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 	RegisterTool(MakeShared<FMCPTool_OpenLevel>());
 	RegisterTool(MakeShared<FMCPTool_Niagara>());
 	RegisterTool(MakeShared<FMCPTool_Level>());
+
+	// New tools
+	RegisterTool(MakeShared<FMCPTool_WorldSettings>());
+	RegisterTool(MakeShared<FMCPTool_ProjectSettings>());
+	RegisterTool(MakeShared<FMCPTool_Build>());
+	RegisterTool(MakeShared<FMCPTool_SetClassDefaults>());
+	RegisterTool(MakeShared<FMCPTool_CreateCppClass>());
+	RegisterTool(MakeShared<FMCPTool_ImportAsset>());
+	RegisterTool(MakeShared<FMCPTool_WidgetBind>());
+	RegisterTool(MakeShared<FMCPTool_ActorSearch>());
+	RegisterTool(MakeShared<FMCPTool_DataTable>());
+	RegisterTool(MakeShared<FMCPTool_Curve>());
+	RegisterTool(MakeShared<FMCPTool_CollisionProfile>());
+	RegisterTool(MakeShared<FMCPTool_Sequencer>());
 
 	// Task queue takes a raw pointer since the registry always outlives it
 	TaskQueue = MakeShared<FMCPTaskQueue>(this);

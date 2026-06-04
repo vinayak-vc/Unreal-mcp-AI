@@ -67,7 +67,13 @@ public class UnrealClaude : ModuleRules
 				"Niagara",
 				"NiagaraEditor",
 				// UMG for WidgetBlueprintLibrary (SetInputMode_*)
-				"UMG"
+				"UMG",
+				// UMGEditor for WidgetBlueprint creation
+				"UMGEditor",
+				// Level Sequence / Sequencer tool
+				"LevelSequence",
+				"MovieScene",
+				"MovieSceneTracks"
 			}
 		);
 

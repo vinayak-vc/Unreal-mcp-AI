@@ -33,6 +33,9 @@ struct FEnhancedActionKeyMapping;
  *   - list_actions: Enumerate InputAction assets under a package path
  *   - list_contexts: Enumerate InputMappingContext assets under a package path
  *   - get_action_info: Find InputAction by name (no path needed) and return details
+ *   - remove_trigger: Remove a trigger from a mapping
+ *   - remove_modifier: Remove a modifier from a mapping
+ *   - create_imc_from_config: Create full IMC from JSON config in one call
  *
  * All operations auto-save assets after modification.
  */
@@ -56,7 +59,10 @@ public:
 			"- 'query_action': Get InputAction details\n"
 			"- 'list_actions': Enumerate InputAction assets under package_path (filters: name_pattern, limit)\n"
 			"- 'list_contexts': Enumerate InputMappingContext assets under package_path (filters: name_pattern, limit)\n"
-			"- 'get_action_info': Find InputAction by action_name and return its details\n\n"
+			"- 'get_action_info': Find InputAction by action_name and return its details\n"
+			"- 'remove_trigger': Remove trigger at index from a mapping\n"
+			"- 'remove_modifier': Remove modifier at index from a mapping\n"
+			"- 'create_imc_from_config': Create full IMC from JSON config in one call\n\n"
 			"Value Types: 'Digital' (bool), 'Axis1D' (float), 'Axis2D' (Vector2D), 'Axis3D' (Vector)\n\n"
 			"Trigger Types: 'Pressed', 'Released', 'Down', 'Hold', 'HoldAndRelease', 'Tap', 'Pulse', 'ChordAction'\n\n"
 			"Modifier Types: 'Negate', 'Swizzle', 'Scalar', 'DeadZone'\n\n"
@@ -110,7 +116,13 @@ public:
 				TEXT("DeadZone type: 'Axial', 'Radial'"), false, TEXT("Axial")),
 
 			FMCPToolParameter(TEXT("mapping_index"), TEXT("number"),
-				TEXT("Index of mapping to remove (from query_context)"), false),
+				TEXT("Index of mapping to target (from query_context)"), false),
+			FMCPToolParameter(TEXT("trigger_index"), TEXT("number"),
+				TEXT("Index of trigger to remove (for remove_trigger)"), false),
+			FMCPToolParameter(TEXT("modifier_index"), TEXT("number"),
+				TEXT("Index of modifier to remove (for remove_modifier)"), false),
+			FMCPToolParameter(TEXT("config"), TEXT("object"),
+				TEXT("Full IMC config JSON for create_imc_from_config (see description)"), false),
 
 			FMCPToolParameter(TEXT("name_pattern"), TEXT("string"),
 				TEXT("Substring to match in asset names (case-insensitive) for list_actions/list_contexts"), false),
@@ -130,15 +142,16 @@ private:
 	FMCPToolResult ExecuteAddMapping(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteRemoveMapping(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddTrigger(const TSharedRef<FJsonObject>& Params);
-	FMCPToolResult ExecuteRemoveTrigger(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteAddModifier(const TSharedRef<FJsonObject>& Params);
-	FMCPToolResult ExecuteRemoveModifier(const TSharedRef<FJsonObject>& Params);
 
 	FMCPToolResult ExecuteQueryContext(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteQueryAction(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteListActions(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteListContexts(const TSharedRef<FJsonObject>& Params);
 	FMCPToolResult ExecuteGetActionInfo(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteRemoveTrigger(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteRemoveModifier(const TSharedRef<FJsonObject>& Params);
+	FMCPToolResult ExecuteCreateIMCFromConfig(const TSharedRef<FJsonObject>& Params);
 
 	UInputAction* LoadInputAction(const FString& Path, FString& OutError);
 	UInputMappingContext* LoadMappingContext(const FString& Path, FString& OutError);
