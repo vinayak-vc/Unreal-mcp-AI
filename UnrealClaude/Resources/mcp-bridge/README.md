@@ -194,4 +194,7 @@ npm run test:coverage # coverage report
 
 ## License
 
-MIT with attribution — see [LICENSE](LICENSE). Author: Natali Caggiano ([@Natfii](https://github.com/Natfii)).
+MIT with attribution — see [LICENSE](LICENSE). Original author: Natali Caggiano ([@Natfii](https://github.com/Natfii)).
+**Fork maintainer & contributor:** Vinayak Lakhani ([@vinayak-vc](https://github.com/vinayak-vc)) — Sprint 1–4 tool additions (niagara, get_property, find_function, get_class_functions, bulk_connect, level routing), submodule-to-vendored migration, docs.
+
+**AI pair:** Claude (Opus 4.8, Anthropic) via Claude Code — test/count fixes, documentation rewrite, repo restructuring.
