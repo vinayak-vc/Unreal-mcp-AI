@@ -1,8 +1,10 @@
 # UE5 MCP Server
 
-[![Tests](https://img.shields.io/badge/tests-87%20passed-brightgreen)](tests/) [![Coverage](https://img.shields.io/badge/coverage-97%25-brightgreen)](vitest.config.js) [![Node](https://img.shields.io/badge/node-%3E%3D18-blue)](package.json) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-202%20passed-brightgreen)](tests/) [![Node](https://img.shields.io/badge/node-%3E%3D18-blue)](package.json) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
-An MCP (Model Context Protocol) server that bridges AI assistants to Unreal Engine 5's editor, enabling direct manipulation of levels, actors, Blueprints, and Animation Blueprints.
+An MCP (Model Context Protocol) server that bridges AI assistants to Unreal Engine 5's editor, enabling direct manipulation of levels, actors, Blueprints, and Animation Blueprints. Targets UE 5.x — read the live engine version at runtime from `unreal_status`.
+
+> This copy is **vendored directly inside the [UnrealClaude](https://github.com/Natfii/UnrealClaude) repo** (`UnrealClaude/Resources/mcp-bridge/`), no longer a git submodule. Upstream: [ue5-mcp-bridge](https://github.com/Natfii/ue5-mcp-bridge).
 
 ## Why a Standalone Repository?
 
@@ -56,8 +58,13 @@ The goal is to speed up the tedious parts of game development so you can focus o
 ### 1. Install
 
 ```bash
-git clone https://github.com/Natfii/unrealclaude-mcp-bridge.git
-cd unrealclaude-mcp-bridge
+# Standalone:
+git clone https://github.com/Natfii/ue5-mcp-bridge.git
+cd ue5-mcp-bridge
+npm install
+
+# Or, as shipped inside the plugin:
+cd <YourProject>/Plugins/UnrealClaude/Resources/mcp-bridge
 npm install
 ```
 
@@ -113,12 +120,40 @@ Once connected, you can interact with Unreal Editor through natural language:
 
 ## Available Tools
 
+The plugin registers ~43 backend tools. To keep the AI client's context small, the bridge classifies them:
+
+- **Simple** — listed directly with full schema, called as `unreal_<tool>`.
+- **Hidden** — callable by name but not listed (async task queue, scripting).
+- **Mega** — six modify domains collapsed behind a single **`unreal_ue` router**.
+
+So the client sees ~18 entries, not 43. The bridge also **auto-queues** every modifying call as an async task and polls until done (read-only tools run synchronously), so long operations don't hit the request timeout.
+
+### The `unreal_ue` router
+
+Domain mutations go through one tool: `unreal_ue` with `{ domain, operation, params }`. Do **not** call the underlying `*_modify` tools directly — they are not exposed.
+
+```json
+{ "domain": "blueprint", "operation": "add_variable",
+  "params": { "blueprint_path": "/Game/BP_Player", "var_name": "Health", "var_type": "float" } }
+```
+
+| Domain | Underlying tool | Covers |
+|--------|-----------------|--------|
+| `blueprint` | `blueprint_modify` (+ `blueprint_query` for reads) | variables, functions, nodes, pins |
+| `anim` | `anim_blueprint_modify` | state machines, transitions, conditions, animation assignment |
+| `character` | `character` / `character_data` | ACharacter actors, config DataAssets, stats DataTables |
+| `enhanced_input` | `enhanced_input` | InputActions, MappingContexts, triggers, modifiers |
+| `material` | `material` | material instances, parameters, slot assignment |
+| `asset` | `asset` | set property, save, duplicate, rename, delete, move, reimport |
+
+Modify ops **auto-compile** — no explicit compile step. Operation lists per domain are in the `unreal_ue` tool description and the [Animation Blueprint Operations](#animation-blueprint-operations) section below.
+
 ### Connection & Context
 
 | Tool | Description |
 |------|-------------|
-| `unreal_status` | Check connection to Unreal Editor |
-| `unreal_get_ue_context` | Get UE 5.7 API documentation by category or query |
+| `unreal_status` | Connection state: project, engine version, tool counts, context-category count |
+| `unreal_get_ue_context` | Get UE API documentation by `category` or keyword `query` |
 
 ### Level & Actor Tools
 
@@ -161,23 +196,22 @@ Once connected, you can interact with Unreal Editor through natural language:
 
 | Tool | Description |
 |------|-------------|
-| `unreal_blueprint_query` | Query Blueprints: list, inspect, get_graph, get_nodes, get_variables, get_functions, get_node_pins, search_nodes, find_references, **find_function**, **get_class_functions** |
-| `unreal_blueprint_modify` | Modify Blueprints: create, add/remove variable/function, **set_variable_default**, add_node (21 types), add_nodes, delete_node, connect_pins, **bulk_connect**, disconnect_pins, set_pin_value |
+| `unreal_blueprint_query` | **(direct, read-only)** Query Blueprints: list, inspect, get_graph, get_nodes, get_variables, get_functions, get_node_pins, search_nodes, find_references, **find_function**, **get_class_functions** |
+| `unreal_ue` domain `blueprint` | **(via router)** Modify Blueprints: create, add/remove variable/function, **set_variable_default**, add_node (30+ types), add_nodes, delete_node, connect_pins, **bulk_connect**, disconnect_pins, set_pin_value |
 
-**21 supported node types:** CallFunction, Branch, Event, CustomEvent, VariableGet/Set, Sequence, Cast, ForEach, ForEachWithBreak, DoOnce, Gate, Delay, SwitchInt/String/Enum, MakeStruct, BreakStruct, MakeArray, Select, Timeline, GetSubsystem, PrintString, Add/Subtract/Multiply/Divide, EnhancedInputAction
+**30+ supported node types:** CallFunction, Branch, Event, CustomEvent, VariableGet/Set, Sequence, Cast, ForEach, ForEachWithBreak, DoOnce, Gate, Delay, SwitchInt/String/Enum (Enum needs `enum_class`), MakeStruct, BreakStruct, MakeArray, Select, Timeline (needs `timeline_name`), GetSubsystem (needs `subsystem_class`), GetSubsystemFromPC, Add/Subtract/Multiply/Divide, PrintString, EnhancedInputAction
 
 ### Animation Blueprint Tools
 
 | Tool | Description |
 |------|-------------|
-| `unreal_anim_blueprint_modify` | Full Animation Blueprint manipulation |
+| `unreal_ue` domain `anim` | Full Animation Blueprint manipulation (via router) |
 
 ### Character Tools
 
 | Tool | Description |
 |------|-------------|
-| `unreal_character` | Query and modify ACharacter actors in the current level |
-| `unreal_character_data` | Create and manage character configuration DataAssets and stats DataTables |
+| `unreal_ue` domain `character` | Query/modify ACharacter actors; also manages config DataAssets and stats DataTables (via router) |
 
 ### VFX Tools
 
@@ -189,13 +223,13 @@ Once connected, you can interact with Unreal Editor through natural language:
 
 | Tool | Description |
 |------|-------------|
-| `unreal_material` | Material instance creation and assignment for Skeletal Meshes |
+| `unreal_ue` domain `material` | Material instance creation, parameters, and assignment (via router) |
 
 ### Enhanced Input Tools
 
 | Tool | Description |
 |------|-------------|
-| `unreal_enhanced_input` | Create and modify Enhanced Input assets (InputAction, InputMappingContext) |
+| `unreal_ue` domain `enhanced_input` | Create/modify Enhanced Input assets — InputAction, InputMappingContext (via router) |
 
 ### Async Task Queue
 
@@ -268,9 +302,9 @@ The `unreal_anim_blueprint_modify` tool provides comprehensive control over Anim
 
 ---
 
-## UE 5.7 Context System
+## UE Context System
 
-The server includes built-in UE 5.7 API documentation that can be queried:
+The server includes built-in UE 5.x API documentation that can be queried (12 categories):
 
 ### Available Categories
 
@@ -321,8 +355,12 @@ Enable automatic context injection by setting:
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
 | `UNREAL_MCP_URL` | `http://localhost:3000` | Unreal plugin HTTP server URL |
-| `MCP_REQUEST_TIMEOUT_MS` | `30000` | Request timeout in milliseconds |
-| `INJECT_CONTEXT` | `false` | Auto-inject UE5 context on tool responses |
+| `MCP_REQUEST_TIMEOUT_MS` | `30000` | HTTP request timeout in milliseconds |
+| `MCP_ASYNC_ENABLED` | `true` | Auto-queue modifying calls as async tasks (set `false` to force synchronous) |
+| `MCP_ASYNC_TIMEOUT_MS` | `300000` | Overall async task timeout (5 min) |
+| `MCP_POLL_INTERVAL_MS` | `2000` | Async task poll interval |
+| `MCP_TOOL_CACHE_TTL_MS` | `30000` | Tool-list cache TTL |
+| `INJECT_CONTEXT` | `false` | Auto-inject UE context on tool responses |
 | `DEBUG` | - | Enable debug logging |
 
 ---
@@ -343,7 +381,7 @@ Enable automatic context injection by setting:
 
 ### Running the Test Suite
 
-This repo includes a Vitest test suite (87 tests) that validates bridge behavior without a running Unreal Editor:
+This repo includes a Vitest test suite (200+ tests) that validates bridge behavior without a running Unreal Editor:
 
 ```bash
 npm install
@@ -374,7 +412,7 @@ MIT with Attribution - see [LICENSE](LICENSE) for details.
 **Attribution Required**: If you use this project, please credit:
 - Project: UE5 MCP Server
 - Author: Natali Caggiano (Natfii)
-- Link: https://github.com/Natfii/unrealclaude-mcp-bridge
+- Link: https://github.com/Natfii/ue5-mcp-bridge
 
 **Disclosure Required**: If you build another MCP server or AI integration using this code, please disclose its use in your documentation.
 
