@@ -270,6 +270,63 @@ The plugin includes a Model Context Protocol (MCP) server with 20+ tools that ex
 
 For full MCP tool documentation with parameters, examples, and API details, see [UnrealClaude's MCP Bridge](https://github.com/Natfii/ue5-mcp-bridge) repository.
 
+### Complete MCP Tool Reference
+
+The bridge exposes **~43 backend tools** to the editor, surfaced to the AI client as **~18 entries**: simple tools listed directly, long-running/scripting tools kept hidden (callable but unlisted), and six modify domains collapsed behind a single `unreal_ue` router to save context tokens. Read the live engine version and tool counts at runtime with `unreal_status` (do not assume the engine version).
+
+#### Simple tools — called directly (`unreal_` prefix)
+
+| Tool | What it does | Class |
+|------|--------------|-------|
+| `unreal_status` | Check editor connection; reports project, engine version, tool counts, context category count. Call first. | read |
+| `unreal_get_ue_context` | Load UE API docs by `category` or keyword `query` (`{}` lists categories). Prefer over web search for engine API. | read |
+| `unreal_open_level` | Open / create (from template) / list level maps. **Invalidates all actor refs — run alone.** | sequential |
+| `unreal_spawn_actor` | Spawn an actor by class with name + location/rotation/scale. | per-object |
+| `unreal_get_level_actors` | List actors in the current level (filters: `class_filter`, `name_filter`; pagination; `brief` for transforms). | read |
+| `unreal_set_property` | Set an actor property via dot-path, e.g. `LightComponent.Intensity`. | per-object |
+| `unreal_get_property` | Read an actor property via dot-path (complement of set_property). | read |
+| `unreal_move_actor` | Move / rotate / scale an actor. | per-object |
+| `unreal_delete_actors` | Delete actors from the level. **Run alone.** | sequential |
+| `unreal_level` | Level ops: `save` (sequential), `get_actor_bounds` (read), `select_actors`, `focus_viewport`. | mixed |
+| `unreal_asset_search` | Find assets by `class_filter`, `name_pattern`, path (paginated). | read |
+| `unreal_asset_dependencies` | List assets a given asset depends on. | read |
+| `unreal_asset_referencers` | List assets that reference a given asset. | read |
+| `unreal_capture_viewport` | Screenshot the active viewport. | read |
+| `unreal_get_output_log` | Recent output-log entries. | read |
+| `unreal_blueprint_query` | Read Blueprints — ops: `list`, `inspect`, `get_graph`, `get_nodes`, `get_variables`, `get_functions`, `get_node_pins`, `search_nodes`, `find_references`, `find_function`, `get_class_functions`. | read |
+| `unreal_niagara` | Niagara VFX: `spawn_system`, `set_parameter`, `list_systems`. | per-object |
+
+#### Hidden tools — callable but not listed
+
+| Tool | What it does | Class |
+|------|--------------|-------|
+| `unreal_task_submit` | Queue any MCP tool for async background execution (avoids timeout on long ops). | — |
+| `unreal_task_status` | Poll status of a submitted task. | read |
+| `unreal_task_result` | Fetch the result of a completed task. | read |
+| `unreal_task_list` | List all async tasks. | read |
+| `unreal_task_cancel` | Cancel a running task. | — |
+| `unreal_execute_script` | Run C++ / Python / console scripts (10-min timeout; may prompt permission dialog). **Run alone.** | sequential |
+| `unreal_cleanup_scripts` | Remove generated scripts. **Run alone.** | sequential |
+| `unreal_get_script_history` | Script execution history. | read |
+| `unreal_run_console_command` | Run an editor console command (dangerous commands blocked). **Run alone.** | sequential |
+
+#### `unreal_ue` router — modify domains (`{ domain, operation, params }`)
+
+Domain mutations **must** go through this router; never call `blueprint_modify` / `anim_blueprint_modify` / `character` / `enhanced_input` / `material` / `asset` directly. All domain args go inside `params`. Modify ops auto-compile (no explicit compile step).
+
+| Domain | Operations |
+|--------|-----------|
+| `blueprint` | `create`, `add_variable`, `remove_variable`, `set_variable_default`, `add_function`, `remove_function`, `add_node`, `add_nodes`, `delete_node`, `connect_pins`, `disconnect_pins`, `bulk_connect`, `set_pin_value` (+ all query ops, also reachable via `unreal_blueprint_query`). 30+ `add_node` types: CallFunction, Branch, Event, CustomEvent, VariableGet/Set, Sequence, Cast, ForEach, ForEachWithBreak, DoOnce, Gate, Delay, SwitchInt/String/Enum, MakeStruct, BreakStruct, MakeArray, Select, Timeline, GetSubsystem, GetSubsystemFromPC, Add/Subtract/Multiply/Divide, PrintString, EnhancedInputAction. |
+| `anim` | `get_info`, `get_state_machine`, `create_state_machine`, `add_state`, `remove_state`, `set_entry_state`, `add_transition`, `remove_transition`, `set_transition_duration`, `set_transition_priority`, `add_condition_node`, `delete_condition_node`, `connect_condition_nodes`, `connect_to_result`, `connect_state_machine_to_output`, `set_state_animation`, `find_animations`, `batch`, `get_transition_nodes`, `inspect_node_pins`, `set_pin_default_value`, `add_comparison_chain`, `validate_blueprint`, `get_state_machine_diagram`, `setup_transition_conditions`, `add_variable`, `set_variable_default`, `remove_variable`, `compile`, `get_states`, `get_transitions`, `get_conduits`. |
+| `character` | `list_characters`, `get_character_info`, `get_movement_params`, `set_movement_params`, `get_components`, `get_character_config`, `assign_anim_bp`, plus DataAsset/DataTable ops: `create_character_data`, `query_character_data`, `get_character_data`, `update_character_data`, `create_stats_table`, `query_stats_table`, `add_stats_row`, `update_stats_row`, `remove_stats_row`, `apply_character_data`. |
+| `enhanced_input` | `create_input_action`, `create_mapping_context`, `add_mapping`, `remove_mapping`, `add_trigger`, `add_modifier`, `query_context`, `query_action`, `list_actions`, `list_contexts`, `get_action_info`. |
+| `material` | `create_material_instance`, `set_material_parameters`, `set_skeletal_mesh_material`, `set_actor_material`, `get_material_info`. |
+| `asset` | `set_asset_property`, `save_asset`, `get_asset_info`, `list_assets`, `duplicate`, `rename`, `delete`, `move`, `reimport`. |
+
+#### Concurrency rules
+
+The Unreal task queue runs **max 4 concurrent tasks**. Keep parallel subagents to **3 max** (one slot for the lead) and **≤8 sequential calls per subagent**. Timeout chain: 30 s game-thread dispatch → 2 min per task → 5 min bridge async → 10 min for `execute_script`. Read-only tools parallelize freely; modify tools parallelize only across **different** objects; sequential-only tools (`open_level`, `delete_actors`, `execute_script`, `cleanup_scripts`, `run_console_command`, `level save`) must run alone. Env overrides: `MCP_REQUEST_TIMEOUT_MS`, `MCP_ASYNC_TIMEOUT_MS`, `MCP_POLL_INTERVAL_MS`, `INJECT_CONTEXT`.
+
 #### Dynamic UE 5.7 Context System
 
 The MCP bridge includes a dynamic context loader that provides accurate UE 5.7 API documentation on demand. Use `unreal_get_ue_context` to query by category (animation, blueprint, slate, actor, assets, replication) or search by keywords. Context status is shown in `unreal_status` output.
