@@ -176,8 +176,8 @@ describe("ROUTER_TOOL_SCHEMA", () => {
 });
 
 describe("classification sets", () => {
-  it("SIMPLE_TOOL_NAMES has 12 entries", () => {
-    expect(SIMPLE_TOOL_NAMES.size).toBe(12);
+  it("SIMPLE_TOOL_NAMES has 15 entries", () => {
+    expect(SIMPLE_TOOL_NAMES.size).toBe(15);
   });
 
   it("HIDDEN_TOOL_NAMES has 9 entries", () => {
@@ -194,8 +194,8 @@ describe("classification sets", () => {
     expect(DOMAIN_TOOL_MAP.asset).toBe("asset");
   });
 
-  it("BLUEPRINT_QUERY_OPS has 9 entries", () => {
-    expect(BLUEPRINT_QUERY_OPS.size).toBe(9);
+  it("BLUEPRINT_QUERY_OPS has 11 entries", () => {
+    expect(BLUEPRINT_QUERY_OPS.size).toBe(11);
   });
 
   it("no overlap between simple and hidden sets", () => {
