@@ -225,6 +225,15 @@ void FUnrealClaudeModule::UnregisterMenus()
 
 void FUnrealClaudeModule::StartMCPServer()
 {
+	// Cook and other commandlets run inside UnrealEditor.exe and load editor modules,
+	// so they reach this code. Skip the HTTP server entirely — it would conflict with
+	// the running editor's port and the bind failure is logged as Error, breaking the cook.
+	if (IsRunningCommandlet())
+	{
+		UE_LOG(LogUnrealClaude, Log, TEXT("MCP Server skipped — running as commandlet (cook/package)"));
+		return;
+	}
+
 	if (MCPServer.IsValid())
 	{
 		UE_LOG(LogUnrealClaude, Warning, TEXT("MCP Server already exists"));
@@ -235,7 +244,8 @@ void FUnrealClaudeModule::StartMCPServer()
 
 	if (!MCPServer->Start(GetMCPServerPort()))
 	{
-		UE_LOG(LogUnrealClaude, Error, TEXT("Failed to start MCP Server on port %d"), GetMCPServerPort());
+		// Downgraded from Error to Warning — a port conflict must not fail a package build.
+		UE_LOG(LogUnrealClaude, Warning, TEXT("Failed to start MCP Server on port %d (port in use?)"), GetMCPServerPort());
 		MCPServer.Reset();
 	}
 }

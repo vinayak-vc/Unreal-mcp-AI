@@ -25,11 +25,15 @@
 #include "Components/ScaleBox.h"
 #include "Components/Spacer.h"
 #include "Components/Throbber.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/VerticalBoxSlot.h"
 
 #include "Kismet2/KismetEditorUtilities.h"
 #include "EditorAssetLibrary.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
+#include "Layout/Margin.h"
 
 FMCPToolResult FMCPTool_WidgetBind::Execute(const TSharedRef<FJsonObject>& Params)
 {
@@ -52,9 +56,17 @@ FMCPToolResult FMCPTool_WidgetBind::Execute(const TSharedRef<FJsonObject>& Param
 	{
 		return ExecuteQuery(Params);
 	}
+	if (Operation == TEXT("inspect_slot"))
+	{
+		return ExecuteInspectSlot(Params);
+	}
+	if (Operation == TEXT("set_slot"))
+	{
+		return ExecuteSetSlot(Params);
+	}
 
 	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: %s. Valid: create, add_widget, query"), *Operation));
+		TEXT("Unknown operation: %s. Valid: create, add_widget, query, inspect_slot, set_slot"), *Operation));
 }
 
 FMCPToolResult FMCPTool_WidgetBind::ExecuteCreate(const TSharedRef<FJsonObject>& Params)
@@ -366,4 +378,318 @@ FMCPToolResult FMCPTool_WidgetBind::ExecuteQuery(const TSharedRef<FJsonObject>& 
 	return FMCPToolResult::Success(
 		FString::Printf(TEXT("Widget Blueprint '%s' has %d widgets"), *WidgetBP->GetName(), WidgetArray.Num()),
 		ResultData);
+}
+
+// --------------------------------------------------------------------------
+// Slot inspection / mutation helpers
+// --------------------------------------------------------------------------
+
+namespace
+{
+	// Walk the widget tree (root + every child) by name.
+	UWidget* FindWidgetByName(UWidgetTree* Tree, const FString& Name)
+	{
+		if (!Tree) { return nullptr; }
+		UWidget* Found = nullptr;
+		Tree->ForEachWidget([&](UWidget* W)
+		{
+			if (!Found && W && W->GetName() == Name) { Found = W; }
+		});
+		return Found;
+	}
+
+	bool Vec2FromObj(const TSharedPtr<FJsonObject>& Obj, FVector2D& Out)
+	{
+		if (!Obj.IsValid()) { return false; }
+		double X = Out.X, Y = Out.Y;
+		const bool bX = Obj->TryGetNumberField(TEXT("x"), X);
+		const bool bY = Obj->TryGetNumberField(TEXT("y"), Y);
+		if (bX || bY) { Out = FVector2D(X, Y); return true; }
+		return false;
+	}
+
+	bool MarginFromObj(const TSharedPtr<FJsonObject>& Obj, FMargin& Out)
+	{
+		if (!Obj.IsValid()) { return false; }
+		double L = Out.Left, T = Out.Top, R = Out.Right, B = Out.Bottom;
+		bool bAny = false;
+		bAny |= Obj->TryGetNumberField(TEXT("left"),   L);
+		bAny |= Obj->TryGetNumberField(TEXT("top"),    T);
+		bAny |= Obj->TryGetNumberField(TEXT("right"),  R);
+		bAny |= Obj->TryGetNumberField(TEXT("bottom"), B);
+		if (bAny) { Out = FMargin(L, T, R, B); }
+		return bAny;
+	}
+
+	bool ParseHAlign(const FString& S, EHorizontalAlignment& Out)
+	{
+		const FString L = S.ToLower();
+		if (L == TEXT("left"))   { Out = HAlign_Left; return true; }
+		if (L == TEXT("center") || L == TEXT("centre")) { Out = HAlign_Center; return true; }
+		if (L == TEXT("right"))  { Out = HAlign_Right; return true; }
+		if (L == TEXT("fill"))   { Out = HAlign_Fill; return true; }
+		return false;
+	}
+
+	bool ParseVAlign(const FString& S, EVerticalAlignment& Out)
+	{
+		const FString L = S.ToLower();
+		if (L == TEXT("top"))    { Out = VAlign_Top; return true; }
+		if (L == TEXT("center") || L == TEXT("centre")) { Out = VAlign_Center; return true; }
+		if (L == TEXT("bottom")) { Out = VAlign_Bottom; return true; }
+		if (L == TEXT("fill"))   { Out = VAlign_Fill; return true; }
+		return false;
+	}
+
+	const TCHAR* HAlignName(EHorizontalAlignment A)
+	{
+		switch (A) { case HAlign_Left: return TEXT("Left"); case HAlign_Center: return TEXT("Center");
+		             case HAlign_Right: return TEXT("Right"); case HAlign_Fill: return TEXT("Fill"); }
+		return TEXT("?");
+	}
+	const TCHAR* VAlignName(EVerticalAlignment A)
+	{
+		switch (A) { case VAlign_Top: return TEXT("Top"); case VAlign_Center: return TEXT("Center");
+		             case VAlign_Bottom: return TEXT("Bottom"); case VAlign_Fill: return TEXT("Fill"); }
+		return TEXT("?");
+	}
+
+	TSharedPtr<FJsonObject> MarginToJson(const FMargin& M)
+	{
+		TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("left"),   M.Left);
+		O->SetNumberField(TEXT("top"),    M.Top);
+		O->SetNumberField(TEXT("right"),  M.Right);
+		O->SetNumberField(TEXT("bottom"), M.Bottom);
+		return O;
+	}
+
+	TSharedPtr<FJsonObject> Vec2ToJson(const FVector2D& V)
+	{
+		TSharedPtr<FJsonObject> O = MakeShared<FJsonObject>();
+		O->SetNumberField(TEXT("x"), V.X);
+		O->SetNumberField(TEXT("y"), V.Y);
+		return O;
+	}
+}
+
+FMCPToolResult FMCPTool_WidgetBind::ExecuteInspectSlot(const TSharedRef<FJsonObject>& Params)
+{
+	FString BPPath, WidgetName;
+	TOptional<FMCPToolResult> Err;
+	if (!ExtractRequiredString(Params, TEXT("blueprint_path"), BPPath, Err)) return Err.GetValue();
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Err)) return Err.GetValue();
+
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(UEditorAssetLibrary::LoadAsset(BPPath));
+	if (!WidgetBP || !WidgetBP->WidgetTree)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("Widget Blueprint not found: %s"), *BPPath));
+	}
+
+	UWidget* W = FindWidgetByName(WidgetBP->WidgetTree, WidgetName);
+	if (!W)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("Widget '%s' not found in %s"), *WidgetName, *BPPath));
+	}
+
+	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+	Out->SetStringField(TEXT("widget"), W->GetName());
+	Out->SetStringField(TEXT("widget_class"), W->GetClass()->GetName());
+
+	UPanelSlot* Slot = W->Slot;
+	if (!Slot)
+	{
+		Out->SetStringField(TEXT("slot_class"), TEXT("(none — root or unparented)"));
+		return FMCPToolResult::Success(TEXT("Widget has no slot (root or unparented)"), Out);
+	}
+	Out->SetStringField(TEXT("slot_class"), Slot->GetClass()->GetName());
+	if (UWidget* Parent = Slot->Parent)
+	{
+		Out->SetStringField(TEXT("parent"), Parent->GetName());
+		Out->SetStringField(TEXT("parent_class"), Parent->GetClass()->GetName());
+	}
+
+	if (UCanvasPanelSlot* C = Cast<UCanvasPanelSlot>(Slot))
+	{
+		const FAnchors A = C->GetAnchors();
+		Out->SetObjectField(TEXT("anchor_min"), Vec2ToJson(A.Minimum));
+		Out->SetObjectField(TEXT("anchor_max"), Vec2ToJson(A.Maximum));
+		Out->SetObjectField(TEXT("alignment"), Vec2ToJson(C->GetAlignment()));
+		Out->SetObjectField(TEXT("offsets"), MarginToJson(C->GetOffsets()));
+		Out->SetBoolField(TEXT("auto_size"), C->GetAutoSize());
+		Out->SetNumberField(TEXT("z_order"), C->GetZOrder());
+	}
+	else if (UHorizontalBoxSlot* H = Cast<UHorizontalBoxSlot>(Slot))
+	{
+		Out->SetObjectField(TEXT("padding"), MarginToJson(H->GetPadding()));
+		Out->SetStringField(TEXT("h_align"), HAlignName(H->GetHorizontalAlignment()));
+		Out->SetStringField(TEXT("v_align"), VAlignName(H->GetVerticalAlignment()));
+		const FSlateChildSize Sz = H->GetSize();
+		Out->SetStringField(TEXT("size_rule"), Sz.SizeRule == ESlateSizeRule::Fill ? TEXT("Fill") : TEXT("Auto"));
+		Out->SetNumberField(TEXT("fill_value"), Sz.Value);
+	}
+	else if (UVerticalBoxSlot* V = Cast<UVerticalBoxSlot>(Slot))
+	{
+		Out->SetObjectField(TEXT("padding"), MarginToJson(V->GetPadding()));
+		Out->SetStringField(TEXT("h_align"), HAlignName(V->GetHorizontalAlignment()));
+		Out->SetStringField(TEXT("v_align"), VAlignName(V->GetVerticalAlignment()));
+		const FSlateChildSize Sz = V->GetSize();
+		Out->SetStringField(TEXT("size_rule"), Sz.SizeRule == ESlateSizeRule::Fill ? TEXT("Fill") : TEXT("Auto"));
+		Out->SetNumberField(TEXT("fill_value"), Sz.Value);
+	}
+	else
+	{
+		Out->SetStringField(TEXT("note"), TEXT("slot type not yet inspectable; only CanvasPanelSlot/HBox/VBox slots fully supported"));
+	}
+
+	return FMCPToolResult::Success(FString::Printf(TEXT("Inspected slot of '%s'"), *WidgetName), Out);
+}
+
+FMCPToolResult FMCPTool_WidgetBind::ExecuteSetSlot(const TSharedRef<FJsonObject>& Params)
+{
+	FString BPPath, WidgetName;
+	TOptional<FMCPToolResult> Err;
+	if (!ExtractRequiredString(Params, TEXT("blueprint_path"), BPPath, Err)) return Err.GetValue();
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Err)) return Err.GetValue();
+
+	UWidgetBlueprint* WidgetBP = Cast<UWidgetBlueprint>(UEditorAssetLibrary::LoadAsset(BPPath));
+	if (!WidgetBP || !WidgetBP->WidgetTree)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("Widget Blueprint not found: %s"), *BPPath));
+	}
+
+	UWidget* W = FindWidgetByName(WidgetBP->WidgetTree, WidgetName);
+	if (!W)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("Widget '%s' not found in %s"), *WidgetName, *BPPath));
+	}
+	UPanelSlot* Slot = W->Slot;
+	if (!Slot)
+	{
+		return FMCPToolResult::Error(TEXT("Widget has no slot (root or unparented)"));
+	}
+
+	TArray<FString> Changes;
+
+	const TSharedPtr<FJsonObject>* TmpObj = nullptr;
+
+	if (UCanvasPanelSlot* C = Cast<UCanvasPanelSlot>(Slot))
+	{
+		FAnchors A = C->GetAnchors();
+		bool bAnchorChanged = false;
+		if (Params->TryGetObjectField(TEXT("anchor_min"), TmpObj))
+		{
+			FVector2D Mn = A.Minimum; if (Vec2FromObj(*TmpObj, Mn)) { A.Minimum = Mn; bAnchorChanged = true; }
+		}
+		if (Params->TryGetObjectField(TEXT("anchor_max"), TmpObj))
+		{
+			FVector2D Mx = A.Maximum; if (Vec2FromObj(*TmpObj, Mx)) { A.Maximum = Mx; bAnchorChanged = true; }
+		}
+		if (bAnchorChanged) { C->SetAnchors(A); Changes.Add(TEXT("anchors")); }
+
+		if (Params->TryGetObjectField(TEXT("alignment"), TmpObj))
+		{
+			FVector2D Al = C->GetAlignment();
+			if (Vec2FromObj(*TmpObj, Al)) { C->SetAlignment(Al); Changes.Add(TEXT("alignment")); }
+		}
+		if (Params->TryGetObjectField(TEXT("offsets"), TmpObj))
+		{
+			FMargin Off = C->GetOffsets();
+			if (MarginFromObj(*TmpObj, Off)) { C->SetOffsets(Off); Changes.Add(TEXT("offsets")); }
+		}
+		bool bAuto;
+		if (Params->TryGetBoolField(TEXT("auto_size"), bAuto)) { C->SetAutoSize(bAuto); Changes.Add(TEXT("auto_size")); }
+		double Z;
+		if (Params->TryGetNumberField(TEXT("z_order"), Z)) { C->SetZOrder(static_cast<int32>(Z)); Changes.Add(TEXT("z_order")); }
+	}
+	else if (UHorizontalBoxSlot* H = Cast<UHorizontalBoxSlot>(Slot))
+	{
+		if (Params->TryGetObjectField(TEXT("padding"), TmpObj))
+		{
+			FMargin P = H->GetPadding();
+			if (MarginFromObj(*TmpObj, P)) { H->SetPadding(P); Changes.Add(TEXT("padding")); }
+		}
+		FString HA;
+		if (Params->TryGetStringField(TEXT("h_align"), HA))
+		{
+			EHorizontalAlignment E; if (ParseHAlign(HA, E)) { H->SetHorizontalAlignment(E); Changes.Add(TEXT("h_align")); }
+		}
+		FString VA;
+		if (Params->TryGetStringField(TEXT("v_align"), VA))
+		{
+			EVerticalAlignment E; if (ParseVAlign(VA, E)) { H->SetVerticalAlignment(E); Changes.Add(TEXT("v_align")); }
+		}
+		FString SR;
+		if (Params->TryGetStringField(TEXT("size_rule"), SR))
+		{
+			FSlateChildSize Sz = H->GetSize();
+			const FString L = SR.ToLower();
+			if (L == TEXT("auto")) { Sz.SizeRule = ESlateSizeRule::Automatic; H->SetSize(Sz); Changes.Add(TEXT("size_rule")); }
+			else if (L == TEXT("fill")) { Sz.SizeRule = ESlateSizeRule::Fill; H->SetSize(Sz); Changes.Add(TEXT("size_rule")); }
+		}
+		double FV;
+		if (Params->TryGetNumberField(TEXT("fill_value"), FV))
+		{
+			FSlateChildSize Sz = H->GetSize(); Sz.Value = static_cast<float>(FV); H->SetSize(Sz); Changes.Add(TEXT("fill_value"));
+		}
+	}
+	else if (UVerticalBoxSlot* V = Cast<UVerticalBoxSlot>(Slot))
+	{
+		if (Params->TryGetObjectField(TEXT("padding"), TmpObj))
+		{
+			FMargin P = V->GetPadding();
+			if (MarginFromObj(*TmpObj, P)) { V->SetPadding(P); Changes.Add(TEXT("padding")); }
+		}
+		FString HA;
+		if (Params->TryGetStringField(TEXT("h_align"), HA))
+		{
+			EHorizontalAlignment E; if (ParseHAlign(HA, E)) { V->SetHorizontalAlignment(E); Changes.Add(TEXT("h_align")); }
+		}
+		FString VA;
+		if (Params->TryGetStringField(TEXT("v_align"), VA))
+		{
+			EVerticalAlignment E; if (ParseVAlign(VA, E)) { V->SetVerticalAlignment(E); Changes.Add(TEXT("v_align")); }
+		}
+		FString SR;
+		if (Params->TryGetStringField(TEXT("size_rule"), SR))
+		{
+			FSlateChildSize Sz = V->GetSize();
+			const FString L = SR.ToLower();
+			if (L == TEXT("auto")) { Sz.SizeRule = ESlateSizeRule::Automatic; V->SetSize(Sz); Changes.Add(TEXT("size_rule")); }
+			else if (L == TEXT("fill")) { Sz.SizeRule = ESlateSizeRule::Fill; V->SetSize(Sz); Changes.Add(TEXT("size_rule")); }
+		}
+		double FV;
+		if (Params->TryGetNumberField(TEXT("fill_value"), FV))
+		{
+			FSlateChildSize Sz = V->GetSize(); Sz.Value = static_cast<float>(FV); V->SetSize(Sz); Changes.Add(TEXT("fill_value"));
+		}
+	}
+	else
+	{
+		return FMCPToolResult::Error(FString::Printf(
+			TEXT("set_slot: slot type '%s' not supported (CanvasPanelSlot, HorizontalBoxSlot, VerticalBoxSlot only)"),
+			*Slot->GetClass()->GetName()));
+	}
+
+	if (Changes.Num() == 0)
+	{
+		return FMCPToolResult::Error(TEXT("set_slot: no recognised layout fields provided"));
+	}
+
+	// Mark dirty + save the WBP package so the changes persist.
+	WidgetBP->Modify();
+	WidgetBP->MarkPackageDirty();
+	FKismetEditorUtilities::CompileBlueprint(WidgetBP);
+	UEditorAssetLibrary::SaveLoadedAsset(WidgetBP);
+
+	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+	Out->SetStringField(TEXT("widget"), WidgetName);
+	Out->SetStringField(TEXT("slot_class"), Slot->GetClass()->GetName());
+	TArray<TSharedPtr<FJsonValue>> ArrJson;
+	for (const FString& S : Changes) { ArrJson.Add(MakeShared<FJsonValueString>(S)); }
+	Out->SetArrayField(TEXT("changed"), ArrJson);
+
+	return FMCPToolResult::Success(
+		FString::Printf(TEXT("Updated slot of '%s' (%d field%s)"), *WidgetName, Changes.Num(), Changes.Num() == 1 ? TEXT("") : TEXT("s")),
+		Out);
 }
