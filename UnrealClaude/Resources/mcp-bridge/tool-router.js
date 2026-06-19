@@ -251,7 +251,7 @@ export const ROUTER_TOOL_SCHEMA = {
     properties: {
       domain: {
         type: "string",
-        description: "blueprint | anim | character | enhanced_input | material | asset",
+        description: "blueprint | anim | character | enhanced_input | material | asset | widget",
         // Note: niagara, level, get_property, set_property, spawn_actor etc. are direct simple tools — call them without unreal_ue router
       },
       operation: {
