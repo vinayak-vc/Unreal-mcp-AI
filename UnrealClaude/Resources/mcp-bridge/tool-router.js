@@ -49,6 +49,7 @@ export const DOMAIN_TOOL_MAP = {
   enhanced_input: "enhanced_input",
   material: "material",
   asset: "asset",
+  widget: "widget_blueprint",
 };
 
 // Blueprint operations that route to "blueprint_query" instead of "blueprint_modify"
@@ -123,7 +124,7 @@ TOOL_TO_DOMAIN["character_data"] = "character"; // sub-route
  */
 export function categorizeToolForStatus(toolName) {
   const cls = classifyTool(toolName);
-  if (cls === "mega") return TOOL_TO_DOMAIN[toolName] || "utility";
+  if (cls === "mega") return TOOL_TO_DOMAIN[toolName] || "utility"; // widget_blueprint → "widget" via TOOL_TO_DOMAIN
   if (cls === "hidden") return toolName.startsWith("task_") ? "task_queue" : "scripting";
   // Simple tools
   if (toolName === "execute_script") return "scripting"; // simple now, but report as scripting
@@ -228,6 +229,19 @@ export const ROUTER_TOOL_SCHEMA = {
     "  duplicate uses 'destination_path' (full target asset path).",
     "  move uses 'destination_directory' (asset name preserved); also accepts 'destination_path' as alias.",
     "  list_assets uses 'directory'; also accepts 'path_filter' as alias (matches asset_search).",
+    "",
+    'domain:"widget" (key params: blueprint_path, widget_name, widget_type)',
+    "  ops: create, add_widget, query, inspect_slot, set_slot",
+    "  create: blueprint_path (name or full /Game/... path), optional package_path (default /Game/UI/), parent_class.",
+    "  Creates WBP with CanvasPanel root; auto-creates BindWidget children if parent_class has them.",
+    "  add_widget: blueprint_path, widget_name, widget_type, optional parent_widget.",
+    "  widget_type values: TextBlock, Button, Image, ProgressBar, Slider, CheckBox, EditableText,",
+    "  RichTextBlock, Border, Canvas, HorizontalBox, VerticalBox, GridPanel, Overlay, SizeBox, ScaleBox, Spacer, Throbber.",
+    "  query: blueprint_path — returns widget hierarchy (name, class, parent, child_count).",
+    "  inspect_slot: blueprint_path, widget_name — returns slot layout props (anchors/offsets/alignment for Canvas; padding/align/size for HBox/VBox).",
+    "  set_slot: blueprint_path, widget_name + layout fields — mutates slot, recompiles, saves.",
+    "  Canvas slot fields: anchor_min{x,y}, anchor_max{x,y}, alignment{x,y}, offsets{left,top,right,bottom}, auto_size, z_order.",
+    "  HBox/VBox slot fields: padding{left,top,right,bottom}, h_align (left|center|right|fill), v_align (top|center|bottom|fill), size_rule (auto|fill), fill_value.",
     "",
     "Pass all domain-specific params inside the params object.",
   ].join("\n"),

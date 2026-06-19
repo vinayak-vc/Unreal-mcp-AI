@@ -120,7 +120,7 @@ describe("ROUTER_TOOL_SCHEMA", () => {
     expect(ROUTER_TOOL_SCHEMA.inputSchema.required).not.toContain("params");
   });
 
-  it("description mentions all six domains", () => {
+  it("description mentions all seven domains", () => {
     const desc = ROUTER_TOOL_SCHEMA.description;
     expect(desc).toContain('"blueprint"');
     expect(desc).toContain('"anim"');
@@ -128,6 +128,7 @@ describe("ROUTER_TOOL_SCHEMA", () => {
     expect(desc).toContain('"enhanced_input"');
     expect(desc).toContain('"material"');
     expect(desc).toContain('"asset"');
+    expect(desc).toContain('"widget"');
   });
 
   it("is not read-only (mega-tools mutate state)", () => {
@@ -188,14 +189,15 @@ describe("classification sets", () => {
     expect(HIDDEN_TOOL_NAMES.size).toBe(8);
   });
 
-  it("DOMAIN_TOOL_MAP has 6 domains with correct values", () => {
-    expect(Object.keys(DOMAIN_TOOL_MAP)).toHaveLength(6);
+  it("DOMAIN_TOOL_MAP has 7 domains with correct values", () => {
+    expect(Object.keys(DOMAIN_TOOL_MAP)).toHaveLength(7);
     expect(DOMAIN_TOOL_MAP.blueprint).toBe("blueprint_modify");
     expect(DOMAIN_TOOL_MAP.anim).toBe("anim_blueprint_modify");
     expect(DOMAIN_TOOL_MAP.character).toBe("character");
     expect(DOMAIN_TOOL_MAP.enhanced_input).toBe("enhanced_input");
     expect(DOMAIN_TOOL_MAP.material).toBe("material");
     expect(DOMAIN_TOOL_MAP.asset).toBe("asset");
+    expect(DOMAIN_TOOL_MAP.widget).toBe("widget_blueprint");
   });
 
   it("BLUEPRINT_QUERY_OPS has 11 entries", () => {

@@ -36,6 +36,7 @@ const DOMAIN_SOURCES = {
     "MCPTool_BlueprintQuery.cpp",
     "MCPTool_BlueprintQueryList.cpp",
   ],
+  widget: ["MCPTool_WidgetBind.cpp"],
 };
 
 // Extract op strings dispatched by a C++ tool. Two styles are recognized:
